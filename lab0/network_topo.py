@@ -21,15 +21,39 @@
 
 #!/usr/bin/python
 
+from mininet.net import Mininet
 from mininet.topo import Topo
+from mininet.link import TCLink
+from mininet.node import OVSBridge
 
 class BridgeTopo(Topo):
-    "Creat a bridge-like customized network topology according to Figure 1 in the lab0 description."
+    "Create a bridge-like customized network topology according to Figure 1 in the lab0 description."
 
     def __init__(self):
 
         Topo.__init__(self)
 
         # TODO: add nodes and links to construct the topology; remember to specify the link properties
+        
+        # adding hosts
+        h1 = self.addHost("h1", ip = "10.0.0.1")
+        h2 = self.addHost("h2", ip = "10.0.0.2")
+        h3 = self.addHost("h3", ip = "10.0.0.3")
+        h4 = self.addHost("h4", ip = "10.0.0.4")
+
+        # adding switches
+        s1 = self.addSwitch("s1", cls=OVSBridge)
+        s2 = self.addSwitch("s2", cls=OVSBridge)
+
+        # adding links
+        self.addLink(h1, s1, bw = 15, delay = "10ms", cls = TCLink) # e1
+        self.addLink(h2, s1, bw = 15, delay = "10ms", cls = TCLink) # e2
+        self.addLink(h3, s2, bw = 15, delay = "10ms", cls = TCLink) # e3
+        self.addLink(h4, s2, bw = 15, delay = "10ms", cls = TCLink) # e4
+        self.addLink(s1, s2, bw = 20, delay = "45ms", cls = TCLink) # e5
 
 topos = {'bridge': (lambda: BridgeTopo())}
+# net = Mininet(BridgeTopo) # Create a network with the topology topo
+# net.start() # Start the network
+# net.pingAll() # Perform ping tests
+# net.stop() 
