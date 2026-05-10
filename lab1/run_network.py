@@ -35,7 +35,26 @@ class NetworkTopo(Topo):
 
         Topo.__init__(self)
 
-        # Build the specified network topology here
+        # hosts
+        h1 = self.addHost("h1", ip = "10.0.1.2/24")
+        h2 = self.addHost("h2", ip = "10.0.1.3/24")
+        ser = self.addHost("ser", ip = "10.0.2.2/24")
+        ext = self.addHost("ext", ip = "192.168.1.123/24")
+
+        # switches
+        s1 = self.addSwitch("s1", dpid = f"{1:016d}")
+        s2 = self.addSwitch("s2", dpid = f"{2:016d}")
+
+        # router
+        s3 = self.addSwitch("s3", dpid = f"{3:016d}")
+
+        # links
+        self.addLink(h1, s1, bw = 15, delay = "10ms")
+        self.addLink(h2, s1, bw = 15, delay = "10ms")
+        self.addLink(s1, s3, bw = 15, delay = "10ms")
+        self.addLink(s3, ext, bw = 15, delay = "10ms")
+        self.addLink(s3, s2, bw = 15, delay = "10ms")
+        self.addLink(s2, ser, bw = 15, delay = "10ms")
 
 def run():
     topo = NetworkTopo()
