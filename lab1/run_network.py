@@ -146,6 +146,12 @@ def run():
         controller=RemoteController, 
         ip="127.0.0.1", 
         port=6653)
+
+    for host in net.hosts:
+        host.cmd("sysctl -w net.ipv6.conf.all.disable_ipv6=1")
+        host.cmd("sysctl -w net.ipv6.conf.default.disable_ipv6=1")
+        host.cmd("sysctl -w net.ipv6.conf.lo.disable_ipv6=1")
+
     net.start()
     #net.pingAllFull()
     #switch_flow_tester = SwitchFlowTester(net)
