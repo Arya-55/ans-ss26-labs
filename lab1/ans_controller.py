@@ -18,6 +18,7 @@
  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  """
+from collections import defaultdict
 from logging import getLogger
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -30,6 +31,7 @@ from pprint import pprint
 
 logger = getLogger(__name__)
 
+
 class LearningSwitch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
@@ -37,7 +39,7 @@ class LearningSwitch(app_manager.RyuApp):
         super(LearningSwitch, self).__init__(*args, **kwargs)
 
         # Here you can initialize the data structures you want to keep at the controller
-        self.packets_received = 0
+        self.packet_counter = 0
 
         # Router port MACs assumed by the controller
         self.port_to_own_mac = {
@@ -53,9 +55,11 @@ class LearningSwitch(app_manager.RyuApp):
             3: "192.168.1.1"
         }
 
+        self.mac_to_port = defaultdict(dict)
+
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
-        
+
         datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -82,43 +86,64 @@ class LearningSwitch(app_manager.RyuApp):
                                 match=match, instructions=inst)
         datapath.send_msg(mod)
 
+    @staticmethod
+    def packet_out_to_port(msg, datapath, parser, in_port, port):
+        return parser.OFPPacketOut(datapath=datapath,
+                                   buffer_id=msg.buffer_id,
+                                   in_port=in_port,
+                                   actions=[parser.OFPActionOutput(port)],
+                                   data=msg.data)
+
+    def flood_packet_out(self, *, ofproto, **kwargs):
+        return self.packet_out_to_port(port=ofproto.OFPP_FLOOD, **kwargs)
+
     # Handle the packet_in event
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
-        self.packets_received += 1
+        num_minus = 10
+        print(num_minus * "-" + "_packet_in_handler start" + num_minus * "-")
+        # print(f"self.mac_to_port={self.mac_to_port}")
+
+        self.packet_counter += 1
         msg = ev.msg
         datapath = msg.datapath
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
 
         if datapath.id == 3:
             # handle router (s3) request
             self.handle_router_request(ev)
-            return
 
-        # handle switch requests
+        else:
+            # handle switch requests
+            in_port = msg.match["in_port"]
+            pkt = packet.Packet(msg.data)
 
-        in_port = msg.match["in_port"]
-        pkt = packet.Packet(msg.data)
+            logger.info("Switch Packets:")
+            for p in pkt.protocols:
+                logger.info(f"\t- {p}")
 
-        logger.info("Switch Packets:")
-        for p in pkt.protocols:
-            logger.info(f"\t- {p}")
+            eth = pkt.get_protocol(ethernet.ethernet)
+            logger.info(f"seq={self.packet_counter}: dpid={datapath.id}: in_port={in_port}, eth_src={eth.src}, eth_dst={eth.dst};")
 
-        eth = pkt.get_protocol(ethernet.ethernet)
-        logger.info(f"seq={self.packets_received}: dpid={datapath.id}: in_port={in_port}, eth_src={eth.src}, eth_dst={eth.dst};")
-
-        self.add_flow(datapath=datapath, priority=1,
-                      match=ofproto_v1_3_parser.OFPMatch(eth_dst=eth.src),
-                      actions=[ofproto_v1_3_parser.OFPActionOutput(port=in_port)])
-        logger.info(f"Added rule: match(eth_dst={eth.src}), action(port={in_port}) on dpid={datapath.id};")
-        out = ofproto_v1_3_parser.OFPPacketOut(datapath=datapath,
-                                               buffer_id=msg.buffer_id,
-                                               in_port=in_port,
-                                               actions=[ofproto_v1_3_parser.OFPActionOutput(ofproto_v1_3.OFPP_FLOOD)],
-                                               data=msg.data)
-        datapath.send_msg(out)
-        logger.info(f"Instruction to dpid={datapath.id}: broadcast")
+            if self.mac_to_port.get(datapath.id, {}).get(eth.dst):
+                logger.critical(f"Existing rule did not match: match(eth_dst={eth.src}), action(port={in_port}) on dpid={datapath.id};")
+                out = self.packet_out_to_port(msg, datapath, parser, in_port, port=self.mac_to_port[datapath.id][eth.dst])
+            else:
+                self.mac_to_port[datapath.id][eth.src] = in_port
+                self.add_flow(datapath=datapath, priority=2,
+                              match=parser.OFPMatch(eth_dst=eth.src),
+                              actions=[parser.OFPActionOutput(port=in_port)])
+                logger.info(f"Added rule: match(eth_dst={eth.src}), action(port={in_port}) on dpid={datapath.id};")
+                out = self.flood_packet_out(msg=msg, datapath=datapath, parser=parser, in_port=in_port, ofproto=ofproto)
+            datapath.send_msg(out)
+            logger.info(f"Instruction to dpid={datapath.id}: broadcast")
+        print(num_minus * "-" + "_packet_in_handler end" + num_minus * "-")
 
     def handle_router_request(self, ev):
+        num_minus = 10
+        print(num_minus * "-" + "handle_router_request start" + num_minus * "-")
+
         msg = ev.msg
         datapath = msg.datapath
         in_port = msg.match["in_port"]
@@ -127,7 +152,7 @@ class LearningSwitch(app_manager.RyuApp):
         logger.info(f"Packet comes from router and was received on port {in_port}! Protocols:")
         for p in pkt.protocols:
             logger.info(f"\t- {p}")
-        
+
         # ping packets have ipv6 and icmpv6 -> Ping uses icmp
         # iperf generates arp packages
 
@@ -135,10 +160,11 @@ class LearningSwitch(app_manager.RyuApp):
         # "10.0.1.1"    ? => "00:00:00:00:01:01"
         # "10.0.2.1"    ? => "00:00:00:00:01:02",
         # "192.168.1.1" ? => "00:00:00:00:01:03"
-        
+
         # router needs to rewrite ethernet headers when forwarding its packets (correkt?)
-        
+
         # ext may not ping internal hosts => drop ICMP packets from ext
             # what about from internal hosts to extern, according to the given result they should also not be able to ping ext
         # no TCP/UDP allowed between ext and ser => drop TCP/UDP packets with respective src/dst-pairs
         # hosts may only ping their own gateway => drop ICMP packages if src-ip != dst-ip
+        print(num_minus * "-" + "handle_router_request end" + num_minus * "-")
