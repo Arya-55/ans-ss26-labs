@@ -24,12 +24,14 @@ from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
-from ryu.lib.packet import packet, ethernet, ether_types, ipv4
+from ryu.lib.packet import packet, ethernet, ether_types, arp, ipv4, icmp, tcp, udp
 from ryu.ofproto import ofproto_v1_3, ofproto_v1_3_parser
 from pprint import pprint
 
 
 logger = getLogger(__name__)
+PRIO_FW = 3
+PRIO_STD = 2
 
 
 class LearningSwitch(app_manager.RyuApp):
@@ -50,9 +52,9 @@ class LearningSwitch(app_manager.RyuApp):
 
         # Router port (gateways) IP addresses assumed by the controller
         self.port_to_own_ip = {
-            1: "10.0.1.1",
-            2: "10.0.2.1",
-            3: "192.168.1.1"
+            1: "10.0.1.1",          # internal host gateway (s1 subnet)
+            2: "10.0.2.1",          # internal server gateway (ser)
+            3: "192.168.1.1"        # external server gateway (ext)
         }
 
         self.mac_to_port = defaultdict(dict)
@@ -97,6 +99,10 @@ class LearningSwitch(app_manager.RyuApp):
     def flood_packet_out(self, *, ofproto, **kwargs):
         return self.packet_out_to_port(port=ofproto.OFPP_FLOOD, **kwargs)
 
+    def matches_subnet(self, ip_addr, in_port):
+        gateway = self.port_to_own_ip[in_port]
+        return ip_addr.startswith(gateway[:gateway.rfind(".")])
+
     # Handle the packet_in event
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
@@ -131,7 +137,7 @@ class LearningSwitch(app_manager.RyuApp):
                 out = self.packet_out_to_port(msg, datapath, parser, in_port, port=self.mac_to_port[datapath.id][eth.dst])
             else:
                 self.mac_to_port[datapath.id][eth.src] = in_port
-                self.add_flow(datapath=datapath, priority=2,
+                self.add_flow(datapath=datapath, priority=PRIO_STD,
                               match=parser.OFPMatch(eth_dst=eth.src),
                               actions=[parser.OFPActionOutput(port=in_port)])
                 logger.info(f"Added rule: match(eth_dst={eth.src}), action(port={in_port}) on dpid={datapath.id};")
@@ -146,58 +152,71 @@ class LearningSwitch(app_manager.RyuApp):
 
         msg = ev.msg
         datapath = msg.datapath
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
         in_port = msg.match["in_port"]
         pkt = packet.Packet(msg.data)
 
         eth = pkt.get_protocol(ethernet.ethernet)
         ip = pkt.get_protocol(ipv4.ipv4)
-        icmp = pkt.get_protocol(icmp.icmp)
-        arp = pkt.get_protocol(arp.arp)
-        tcp = pkt.get_protocol(tcp.tcp)
-        udp = pkt.get_protocol(udp.udp)
+        arp_pkt = pkt.get_protocol(arp.arp)
 
-        if udp or tcp:
-            # do udp/tcp stuff
-            # no connection between ser and ext, otherwise ok
-            pass
+        if arp_pkt:
+            logger.info(f"\tGot an ARP packet: {arp_pkt}")
+            ip_src = arp_pkt.src_ip
 
-        if icmp:
-            # do icmp stuff
-            # internal all allowed (concrete Ip-adresses)
-            # gateway pings only to own (subnet) gateway (wenn subnetzte unterschiedlich, dann droppen, sonst icmp reply nach source)
-            # none to external
-            # none from external
-            pass
-
-        if arp:
-            # do arp stuff
-            # answer to in-port with MAC of in-port-gateway (arp reply)
-            pass
+            #TODO: Router has to stop ARP broadcasts
+            #TODO: Drop Package that request/reply to 10.0.1.3 and 10.0.1.2 (Those have to be answered by h1 or h2 respectively)
+            #TODO: Answer Packages for any other ip address with the MAC-Address of the port at which the request arrived (send back towards source ip)
 
         if ip:
-            # do ip stuff
-            # prefix matching, next hop (Ethernet-Header Rewriting: MAC-adresse der Source muss MAC adresse des input-ports sein (siehe actions))
-            pass
-        
-        # do ethernet stuff?
-
-
-        logger.info(f"Packet comes from router and was received on port {in_port}! Protocols:")
-        for p in pkt.protocols:
-            logger.info(f"\t- {p}")
-
-        # ping packets have ipv6 and icmpv6 -> Ping uses icmp
-        # iperf generates arp packages
-
-        # must answer ARP-Packets as hosts will ARP for IP Gateways
-        # "10.0.1.1"    ? => "00:00:00:00:01:01"
-        # "10.0.2.1"    ? => "00:00:00:00:01:02",
-        # "192.168.1.1" ? => "00:00:00:00:01:03"
-
-        # router needs to rewrite ethernet headers when forwarding its packets (correkt?)
-
-        # ext may not ping internal hosts => drop ICMP packets from ext
-            # what about from internal hosts to extern, according to the given result they should also not be able to ping ext
-        # no TCP/UDP allowed between ext and ser => drop TCP/UDP packets with respective src/dst-pairs
-        # hosts may only ping their own gateway => drop ICMP packages if src-ip != dst-ip
+            logger.info(f"\tGot an IP packet: {ip}")
+            ip_src = ip.src
+            ip_dst = ip.dst
+            
+            if in_port != 1:
+                # IP packet comes from one of the servers
+                if self.matches_subnet(ip_dst, 2) or self.matches_subnet(ip_dst, 3):
+                    # and tries to go to the other server 
+                    if ip.proto in [1, 6, 17]:
+                        # which is not allowed for ICMP (ip_proto = 1) and TCP/UDP (ip_proto = 6/17)
+                        self.add_flow(datapath=datapath, 
+                                      priority=PRIO_FW, 
+                                      match=parser.OFPMatch(eth_type=0x0800, ip_proto=ip.proto, ipv4_src = ip_src, ipv4_dst = ip_dst), 
+                                      actions=[])   # no actions == drop
+                        logger.info(f"Added Firewall-Rule: No IP-Traffic of type TCP/UDP or ICMP between {ip_src} and {ip_dst} allowed.")
+                        # no further processing
+                    else:
+                        #TODO: Other protocols are not prohibited in the excercise => forwarding rule needed?
+                        pass
+                else:
+                    # IP Packet wants to go to subnet 10.0.1.1/24
+                    #TODO: Add flow-rule to forward packet, incl. decrementing TTL and rewriting MAC-Adresses in ethernet header  
+                    pass
+                #TODO: Probably don't need both else-cases and can just add a forwarding flow rule here for all other cases fromone of the servers
+            else:
+                # IP packet comes from the subnet 10.0.1.1/24
+                icmp_pkt = pkt.get_protocol(icmp.icmp)
+                
+                if icmp_pkt:
+                    # It's an ICMP packet
+                    if self.matches_subnet(ip_dst, 3):
+                        # and tries to go to the external server which is not allowed:
+                        self.add_flow(datapath=datapath, 
+                                      priority=PRIO_FW, 
+                                      match=parser.OFPMatch(eth_type=0x0800, ip_proto=ip.proto, ipv4_src = ip_src, ipv4_dst = ip_dst), 
+                                      actions=[])   # no actions == drop
+                        logger.info(f"Added Firewall-Rule: No ICMP-Traffic between {ip_src} and {ip_dst} allowed.")
+                        # no further processing
+                    else:
+                        # ICMP Packets to other parts of the network are allowed
+                        #TODO: handle this (does this need different handling than TCP/UDP? Can ICMP be addressed to the router itself?)
+                        pass
+                else:
+                    # Other IP-Proto
+                    #TODO: Add flow-rule to forward packet, incl. decrementing TTL and rewriting MAC-Adresses in ethernet header
+                    pass
+                # TODO: Might need the Else-Stuff, if ICMP has to be handled differently than the other rules
+                        
         print(num_minus * "-" + "handle_router_request end" + num_minus * "-")

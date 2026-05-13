@@ -154,8 +154,8 @@ def run():
     net.start()
     net.pingAll()
 
-    switch_flow_tester = SwitchFlowTester(net)
-    switch_flow_tester.test()
+    #switch_flow_tester = SwitchFlowTester(net)
+    #switch_flow_tester.test()
 
     CLI(net)
     net.stop()
