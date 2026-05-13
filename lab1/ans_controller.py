@@ -182,9 +182,28 @@ class LearningSwitch(app_manager.RyuApp):
         if arp_packet:
             # do arp stuff
             # answer to in-port with MAC of in-port-gateway (arp reply)
-            pass
+            # rule: send arp reply with gateway mac
+            match = parser.OFPMatch(in_port=in_port, arp_sha=arp_packet.src_mac, arp_spa=arp_packet.src_ip, arp_op=2)
+            actions = [parser.OFPActionSetfield(opcode=2,
+                                                src_mac=self.port_to_own_mac[in_port], dst_mac=arp_packet.src_mac,
+                                                src_ip=self.port_to_own_ip[in_port], dst_ip=arp_packet.src_ip),
+                       parser.OFPActionOutput(port=in_port)]
+            self.add_flow(datapath=datapath, priority=2, match=match, actions=actions)
+            logger.info(f"Added rule: match(in_port={in_port}, arp_sha={arp_packet.src_mac}, arp_spa={arp_packet.src_ip}, arp_op=2),"
+                        f"action(port={in_port}) on router;")
 
-        if ip:
+            # send arp reply manually the first time
+            eth_packet.src, eth_packet.dst = self.port_to_own_mac[in_port], eth_packet.src
+            arp_packet.src_mac, arp_packet.dst_mac = self.port_to_own_mac[in_port], arp_packet.src_mac
+            arp_packet.src_ip, arp_packet.dst_ip = self.port_to_own_ip[in_port], arp_packet.src_ip
+            pkt = packet.Packet()
+            pkt.add_protocol(eth_packet)
+            pkt.add_protocol(arp_packet)
+            pkt.serialize()
+            out = self.reply_packet_to_in_port(data=msg.data, datapath=datapath, parser=parser, in_port=in_port)
+            logger.info(f"Instruction to router: send arp reply")
+
+        if ipv4_packet:
             # do ip stuff
             # prefix matching, next hop (Ethernet-Header Rewriting: MAC-adresse der Source muss MAC adresse des input-ports sein (siehe actions))
             pass
