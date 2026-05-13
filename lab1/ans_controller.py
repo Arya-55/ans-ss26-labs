@@ -87,18 +87,18 @@ class LearningSwitch(app_manager.RyuApp):
         datapath.send_msg(mod)
 
     @staticmethod
-    def packet_out_to_port(msg, datapath, parser, in_port, port):
+    def packet_out_to_port(data, datapath, parser, in_port, port, ofproto):
         return parser.OFPPacketOut(datapath=datapath,
-                                   buffer_id=msg.buffer_id,
                                    in_port=in_port,
+                                   buffer_id=ofproto.OFP_NO_BUFFER,
                                    actions=[parser.OFPActionOutput(port)],
-                                   data=msg.data)
+                                   data=data)
 
-    def reply_packet_to_in_port(self, *, in_port, **kwargs):
-        return self.packet_out_to_port(port=in_port, **kwargs)
+    def reply_packet_to_in_port(self, *, in_port, ofproto, **kwargs):
+        return self.packet_out_to_port(port=in_port, in_port=ofproto.OFPP_CONTROLLER, ofproto=ofproto,  **kwargs)
 
     def flood_packet_out(self, *, ofproto, **kwargs):
-        return self.packet_out_to_port(port=ofproto.OFPP_FLOOD, **kwargs)
+        return self.packet_out_to_port(port=ofproto.OFPP_FLOOD, ofproto=ofproto, **kwargs)
 
     # Handle the packet_in event
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -131,14 +131,14 @@ class LearningSwitch(app_manager.RyuApp):
 
             if self.mac_to_port.get(datapath.id, {}).get(eth.dst):
                 logger.critical(f"Existing rule did not match: match(eth_dst={eth.src}), action(port={in_port}) on dpid={datapath.id};")
-                out = self.packet_out_to_port(msg, datapath, parser, in_port, port=self.mac_to_port[datapath.id][eth.dst])
+                out = self.packet_out_to_port(msg.data, datapath, parser, in_port, port=self.mac_to_port[datapath.id][eth.dst], ofproto=ofproto)
             else:
                 self.mac_to_port[datapath.id][eth.src] = in_port
                 self.add_flow(datapath=datapath, priority=2,
                               match=parser.OFPMatch(eth_dst=eth.src),
                               actions=[parser.OFPActionOutput(port=in_port)])
                 logger.info(f"Added rule: match(eth_dst={eth.src}), action(port={in_port}) on dpid={datapath.id};")
-                out = self.flood_packet_out(msg=msg, datapath=datapath, parser=parser, in_port=in_port, ofproto=ofproto)
+                out = self.flood_packet_out(data=msg.data, datapath=datapath, parser=parser, in_port=in_port, ofproto=ofproto)
             datapath.send_msg(out)
             logger.info(f"Instruction to dpid={datapath.id}: broadcast")
         print(num_minus * "-" + "_packet_in_handler end" + num_minus * "-")
@@ -166,6 +166,7 @@ class LearningSwitch(app_manager.RyuApp):
         tcp_packet = pkt.get_protocol(tcp.tcp)
         udp_packet = pkt.get_protocol(udp.udp)
 
+        outs = []
         if udp_packet or tcp_packet:
             # do udp/tcp stuff
             # no connection between ser and ext, otherwise ok
@@ -182,33 +183,49 @@ class LearningSwitch(app_manager.RyuApp):
         if arp_packet:
             # do arp stuff
             # answer to in-port with MAC of in-port-gateway (arp reply)
-            # rule: send arp reply with gateway mac
-            match = parser.OFPMatch(in_port=in_port, arp_sha=arp_packet.src_mac, arp_spa=arp_packet.src_ip, arp_op=2)
-            actions = [parser.OFPActionSetfield(opcode=2,
-                                                src_mac=self.port_to_own_mac[in_port], dst_mac=arp_packet.src_mac,
-                                                src_ip=self.port_to_own_ip[in_port], dst_ip=arp_packet.src_ip),
-                       parser.OFPActionOutput(port=in_port)]
-            self.add_flow(datapath=datapath, priority=2, match=match, actions=actions)
-            logger.info(f"Added rule: match(in_port={in_port}, arp_sha={arp_packet.src_mac}, arp_spa={arp_packet.src_ip}, arp_op=2),"
-                        f"action(port={in_port}) on router;")
+            if arp_packet.opcode == arp.ARP_REPLY:  # process arp reply
+                self.ip_to_mac[arp_packet.src_ip] = arp_packet.src_mac
+                if self.buffered_ipv4_packets[arp_packet.src_ip]:
+                    buffered_packet = self.buffered_ipv4_packets[arp_packet.src_ip].pop(0)
+                    outs.append(self.forward_ipv4_packet(ipv4_packet=buffered_packet,
+                                                         eth_dst=arp_packet.src_mac,#
+                                                         eth_packet=eth_packet,
+                                                         datapath=datapath,
+                                                         parser=parser,
+                                                         in_port=ofproto.OFPP_CONTROLLER,
+                                                         ofproto=ofproto))
+            else:  # reply to arp request
+                match = parser.OFPMatch(in_port=in_port, arp_op=arp.ARP_REQUEST, eth_type=ether_types.ETH_TYPE_ARP)
+                actions = [parser.OFPActionSetField(arp_op=arp.ARP_REPLY),
+                           parser.OFPActionSetField(eth_src=self.port_to_own_mac[in_port]),
+                           parser.OFPActionSetField(eth_dst=arp_packet.src_mac),
+                           parser.OFPActionSetField(arp_sha=self.port_to_own_mac[in_port]),
+                           parser.OFPActionSetField(arp_tha=arp_packet.src_mac),
+                           parser.OFPActionSetField(arp_spa=self.port_to_own_ip[in_port]),
+                           parser.OFPActionSetField(arp_tpa=arp_packet.src_ip),
+                           parser.OFPActionOutput(port=in_port)]
+                # rule: send arp reply with gateway mac
+                self.add_flow(datapath=datapath, priority=2, match=match, actions=actions)
+                logger.info(f"Added rule: match={match}, action={actions} on router;")
 
-            # send arp reply manually the first time
-            eth_packet.src, eth_packet.dst = self.port_to_own_mac[in_port], eth_packet.src
-            arp_packet.src_mac, arp_packet.dst_mac = self.port_to_own_mac[in_port], arp_packet.src_mac
-            arp_packet.src_ip, arp_packet.dst_ip = self.port_to_own_ip[in_port], arp_packet.src_ip
-            pkt = packet.Packet()
-            pkt.add_protocol(eth_packet)
-            pkt.add_protocol(arp_packet)
-            pkt.serialize()
-            out = self.reply_packet_to_in_port(data=msg.data, datapath=datapath, parser=parser, in_port=in_port)
-            logger.info(f"Instruction to router: send arp reply")
+                # send arp reply manually the first time
+                eth_packet.src, eth_packet.dst = self.port_to_own_mac[in_port], eth_packet.src
+                arp_packet.src_mac, arp_packet.dst_mac = self.port_to_own_mac[in_port], arp_packet.src_mac
+                arp_packet.src_ip, arp_packet.dst_ip = self.port_to_own_ip[in_port], arp_packet.src_ip
+                arp_packet.opcode = 2
+                pkt = packet.Packet()
+                pkt.add_protocol(eth_packet)
+                pkt.add_protocol(arp_packet)
+                pkt.serialize()
+                outs.append(self.reply_packet_to_in_port(data=pkt.data, datapath=datapath, parser=parser, in_port=in_port, ofproto=ofproto))
+                logger.info(f"Instruction to router: send arp reply")
 
         if ipv4_packet:
             # do ip stuff
             # prefix matching, next hop (Ethernet-Header Rewriting: MAC-adresse der Source muss MAC adresse des input-ports sein (siehe actions))
             pass
 
-        datapath.send_msg(out)
+        [datapath.send_msg(out) for out in outs]
         # do ethernet stuff?
 
         # ping packets have ipv6 and icmpv6 -> Ping uses icmp
