@@ -152,10 +152,10 @@ def run():
         host.cmd("sysctl -w net.ipv6.conf.lo.disable_ipv6=1")
 
     net.start()
-    net.pingAll()
+    #net.pingAll()
 
-    #switch_flow_tester = SwitchFlowTester(net)
-    #gitswitch_flow_tester.test()
+    # switch_flow_tester = SwitchFlowTester(net)
+    # gitswitch_flow_tester.test()
 
     CLI(net)
     net.stop()
