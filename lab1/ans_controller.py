@@ -179,27 +179,17 @@ class LearningSwitch(app_manager.RyuApp):
                 # IP packet comes from one of the servers
                 if self.matches_subnet(ip_dst, 2) or self.matches_subnet(ip_dst, 3):
                     # and tries to go to the other server 
-                    if ip.proto in [1, 6, 17]:
+                    if ip.proto in [1, 6, 17]: # konstanten in ipv4 
                         # which is not allowed for ICMP (ip_proto = 1) and TCP/UDP (ip_proto = 6/17)
                         self.add_flow(datapath=datapath, 
                                       priority=PRIO_FW, 
                                       match=parser.OFPMatch(eth_type=0x0800, ip_proto=ip.proto, ipv4_src = ip_src, ipv4_dst = ip_dst), 
                                       actions=[])   # no actions == drop
                         logger.info(f"Added Firewall-Rule: No IP-Traffic of type TCP/UDP or ICMP between {ip_src} and {ip_dst} allowed.")
-                        # no further processing
-                    else:
-                        #TODO: Other protocols are not prohibited in the excercise => forwarding rule needed?
-                        pass
-                else:
-                    # IP Packet wants to go to subnet 10.0.1.1/24
-                    #TODO: Add flow-rule to forward packet, incl. decrementing TTL and rewriting MAC-Adresses in ethernet header  
-                    pass
-                #TODO: Probably don't need both else-cases and can just add a forwarding flow rule here for all other cases fromone of the servers
-            else:
-                # IP packet comes from the subnet 10.0.1.1/24
-                icmp_pkt = pkt.get_protocol(icmp.icmp)
-                
-                if icmp_pkt:
+                        return
+                    
+            icmp_pkt = pkt.get_protocol(icmp.icmp)
+            if icmp_pkt:
                     # It's an ICMP packet
                     if self.matches_subnet(ip_dst, 3):
                         # and tries to go to the external server which is not allowed:
@@ -208,15 +198,12 @@ class LearningSwitch(app_manager.RyuApp):
                                       match=parser.OFPMatch(eth_type=0x0800, ip_proto=ip.proto, ipv4_src = ip_src, ipv4_dst = ip_dst), 
                                       actions=[])   # no actions == drop
                         logger.info(f"Added Firewall-Rule: No ICMP-Traffic between {ip_src} and {ip_dst} allowed.")
+                        return
                         # no further processing
-                    else:
-                        # ICMP Packets to other parts of the network are allowed
-                        #TODO: handle this (does this need different handling than TCP/UDP? Can ICMP be addressed to the router itself?)
-                        pass
-                else:
-                    # Other IP-Proto
-                    #TODO: Add flow-rule to forward packet, incl. decrementing TTL and rewriting MAC-Adresses in ethernet header
-                    pass
-                # TODO: Might need the Else-Stuff, if ICMP has to be handled differently than the other rules
+            else:
+                # TODO: handle ICMP Gateway Ping
+                pass
+
+            # TODO: Forward IP Package
                         
         print(num_minus * "-" + "handle_router_request end" + num_minus * "-")
