@@ -303,30 +303,11 @@ class LearningSwitch(app_manager.RyuApp):
         in_port = msg.match["in_port"]
         pkt = packet.Packet(msg.data)
 
-        logger.debug(f"Packet comes from router and was received on port {in_port}! Protocols:")
-        for p in pkt.protocols:
-            logger.debug(f"\t- {p}")
-
         eth_packet = pkt.get_protocol(ethernet.ethernet)
         ipv4_packet = pkt.get_protocol(ipv4.ipv4)
-        #icmp_packet = pkt.get_protocol(icmp.icmp)
         arp_packet = pkt.get_protocol(arp.arp)
-        #tcp_packet = pkt.get_protocol(tcp.tcp)
-        #udp_packet = pkt.get_protocol(udp.udp)
 
         outs = []
-        """if udp_packet or tcp_packet:
-            # do udp/tcp stuff
-            # no connection between ser and ext, otherwise ok
-            pass
-
-        if icmp_packet:
-            # do icmp stuff
-            # internal all allowed (concrete Ip-adresses)
-            # gateway pings only to own (subnet) gateway (wenn subnetzte unterschiedlich, dann droppen, sonst icmp reply nach source)
-            # none to external
-            # none from external
-            pass"""
 
         if arp_packet:
             logger.info(f"seq={self.packet_counter}: Got ARP packet:\n{arp_packet}")
