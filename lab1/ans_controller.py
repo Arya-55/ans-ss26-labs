@@ -221,6 +221,9 @@ class LearningSwitch(app_manager.RyuApp):
 
         eth_packet = pkt.get_protocol(ethernet.ethernet)
         ipv4_packet = pkt.get_protocol(ipv4.ipv4)
+        ipv4_packet.ttl = ipv4_packet.ttl - 1;
+
+        icmp_packet = pkt.get_protocol(icmp.icmp)
 
         match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst=ipv4_packet.dst)
         dst_network = ip_network((ipv4_packet.dst, self.netmask), strict=False)
@@ -238,6 +241,8 @@ class LearningSwitch(app_manager.RyuApp):
         pkt = packet.Packet()
         pkt.add_protocol(eth_packet)
         pkt.add_protocol(ipv4_packet)
+        if icmp_packet:
+            pkt.add_protocol(icmp_packet)
         pkt.serialize()
 
         logger.info(f"Instruction to router: forward to ip={ipv4_packet.dst}, mac={eth_dst}")
