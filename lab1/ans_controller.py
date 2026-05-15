@@ -18,7 +18,6 @@
  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  """
-import datetime
 from collections import defaultdict
 from copy import deepcopy
 from ipaddress import ip_address, ip_network, IPv4Network, IPv4Address
@@ -177,18 +176,17 @@ class LearningSwitch(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        t = datetime.datetime.now()
-        timestamp = f"{t.minute}:{t.second}.{str(t.microsecond)[:3]}"
-        logger.info(f"\n{timestamp}   ###### NEW PACKET ######")
         pkt = packet.Packet(msg.data)
         for p in pkt.protocols:
             logger.info(f" - {p}")
 
         if datapath.id == 3:
             # handle router (s3) request
+            logger.info(f"\n###### NEW PACKET (Router) ######")
             self.handle_router_request(ev)
         else:
             # handle switch requests
+            switch_logger.info(f"\n###### NEW PACKET (Switch) ######")
             num_minus = 10
             print(num_minus * "-" + "Switch Request start (_packet_in_handler)" + num_minus * "-")
             
@@ -223,11 +221,9 @@ class LearningSwitch(app_manager.RyuApp):
             else:
                 # Flood packet out
                 out = self.flood_packet_out(data=msg.data, datapath=datapath, parser=parser, in_port=in_port, ofproto=ofproto)
-                logger.info(f"Instruction to dpid={datapath.id}: broadcast")
+                switch_logger.info(f"Instruction to dpid={datapath.id}: broadcast")
 
             datapath.send_msg(out)
-
-            switch_logger.info(f"Instruction to dpid={datapath.id}: broadcast")
 
 
     @staticmethod
