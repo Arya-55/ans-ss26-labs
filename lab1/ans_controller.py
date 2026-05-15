@@ -27,7 +27,7 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.lib.packet import packet, ethernet, ether_types, ipv4, in_proto, icmp, arp
-from ryu.ofproto import ofproto_v1_3
+from ryu.ofproto import ofproto_v1_3, ether
 from pprint import pprint, pformat
 
 
@@ -135,6 +135,8 @@ class LearningSwitch(app_manager.RyuApp):
                 "dst": ip_network("10.0.2.0/24")
             }
         ]
+
+        self.firewall_tracked = []
 
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -327,6 +329,33 @@ class LearningSwitch(app_manager.RyuApp):
         
         logger.info(f"No matching firewall entry found")
         return None
+    
+
+    def send_destination_unreachable(self, pkt, eth_packet, ipv4_packet, datapath, parser, in_port, ofproto):
+        router_mac = self.port_to_own_mac[in_port]
+        router_ip = self.port_to_own_ip[in_port]
+
+        # extra stuff for ICMP unreachable that is not natively supported by the library
+        eth_offset = 14
+        if eth_packet.ethertype == ether.ETH_TYPE_8021Q:
+            eth_offset = eth_offset + 4
+
+        orig_data = pkt.data[eth_offset:eth_offset + ipv4_packet.header_length * 4 + 8]
+        # helper for icmp payload
+        icmp_data = icmp.dest_unreach(data_len=len(orig_data), data=orig_data)
+        code = 13 # Prohibited
+
+        un_pkt = packet.Packet()
+        un_pkt.add_protocol(ethernet.ethernet(src=router_mac, dst=eth_packet.src, ethertype=ether.ETH_TYPE_IP))
+        un_pkt.add_protocol(ipv4.ipv4(src=router_ip, dst=ipv4_packet.src, proto=in_proto.IPPROTO_ICMP))
+        un_pkt.add_protocol(icmp.icmp(type_=icmp.ICMP_DEST_UNREACH, code=code, csum=0, data=icmp_data))
+        un_pkt.serialize()
+        logger.info(f"\n\nSEND ICMP UNREACHABLE:\n {str(un_pkt)}")
+        logger.info(f"\nin_port: {in_port}") # Easier to notice, before it was 2, then 1 after pingall
+        # outdated with the controller redirect actions taking priority: TODO after pingall (router populated with flow rules), "ext ping h1 -c1" no longer instantly breaks, however,
+        # "h1 ping ext -c1" works (hosts swapped). The reason is that since the ping goes back and forth, it gets blocked on the h1 side, meaning the ext one hangs
+        # so this means the rules for ext in the router let it through somehow after pingall, even if it should go through the firewall check here
+        return self.reply_packet_to_in_port(data=un_pkt.data, datapath=datapath, parser=parser, in_port=in_port, ofproto=ofproto)
 
 
     def handle_router_request(self, ev):
@@ -398,13 +427,29 @@ class LearningSwitch(app_manager.RyuApp):
             firewall_entry = self.check_for_firewall_entry(ipv4_packet, icmp_packet=icmp_packet)
 
             if firewall_entry:
-                # There is an entry in the firewall-table fitting this packet
-                match = parser.OFPMatch(eth_type=0x0800, **firewall_entry)
-                self.add_flow(datapath=datapath, 
-                              priority=PRIO_FIREWALL, 
-                              match=match, 
-                              actions=[])
-                logger.info(f"Added firewall rule on router: match={match}, action=[]")
+                if firewall_entry not in self.firewall_tracked:
+                    self.firewall_tracked.append(firewall_entry)
+
+                    # There is an entry in the firewall-table fitting this packet
+                    match = parser.OFPMatch(eth_type=0x0800, **firewall_entry)
+
+                    # if icmp, redirect back to controller so it can send icmp unreachable
+                    actions = []
+                    if icmp_packet:
+                        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
+                                                ofproto.OFPCML_NO_BUFFER)]
+                        
+                    self.add_flow(datapath=datapath, 
+                                priority=PRIO_FIREWALL, 
+                                match=match, 
+                                actions=actions)
+                    logger.info(f"Added firewall rule on router: match={match}, action={actions}")
+
+                # Send a "Destination Unreachable - Communication Administratively Prohibited" ICMP
+                # If it was an ICMP packet
+                if icmp_packet:
+                    outs.append(self.send_destination_unreachable(pkt, eth_packet, ipv4_packet, datapath, parser, in_port, ofproto))   
+
             else:
                 logger.debug(f"self.ip_to_mac={self.ip_to_mac}")
                 if eth_packet.src != self.ip_to_mac.get(ipv4_packet.src):
