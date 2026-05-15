@@ -230,6 +230,7 @@ class LearningSwitch(app_manager.RyuApp):
         out_port = self.network_to_port[dst_network.network_address]
         actions = [parser.OFPActionSetField(eth_src=self.port_to_own_mac[out_port]),
                    parser.OFPActionSetField(eth_dst=eth_dst),
+                   parser.OFPActionDecNwTtl(),
                    parser.OFPActionOutput(out_port)]
         self.add_flow(datapath=datapath, priority=PRIO_FORWARD, match=match, actions=actions)
         logger.info(f"Added rule: match={match}, actions={actions} on router;")
