@@ -251,11 +251,16 @@ class LearningSwitch(app_manager.RyuApp):
 
     def construct_arp_request(self, port, dst_ip, datapath, parser, ofproto):
         eth_packet = ethernet.ethernet(src=self.port_to_own_mac[port], ethertype=ether_types.ETH_TYPE_ARP)
-        arp_packet = arp.arp(opcode=arp.ARP_REQUEST, src_mac=self.port_to_own_mac[port], src_ip=self.port_to_own_ip[port], dst_ip=dst_ip)
+        arp_packet = arp.arp(opcode=arp.ARP_REQUEST, src_mac=self.port_to_own_mac[port], src_ip=self.port_to_own_ip[port], dst_mac="00:00:00:00:00:00", dst_ip=dst_ip)
         pkt = packet.Packet()
         pkt.add_protocol(eth_packet)
         pkt.add_protocol(arp_packet)
         pkt.serialize()
+
+        logger.info(f"construct arp request, contents:")
+        for p in pkt.protocols:
+            logger.info(f"> {p}")
+
         logger.info(f"Instruction to router: arp request for {dst_ip}")
         return self.packet_out_to_port(data=pkt.data, datapath=datapath, parser=parser, in_port=ofproto.OFPP_CONTROLLER, port=port, ofproto=ofproto)
 
@@ -294,7 +299,7 @@ class LearningSwitch(app_manager.RyuApp):
         if arp_packet:
             logger.info(f"seq={self.packet_counter}: Got ARP packet:\n{arp_packet}")
 
-            if arp_packet.dst_ip != self.port_to_own_ip[in_port]:
+            if arp_packet.dst_ip != self.port_to_own_ip[in_port]: # not directed to gateway: internal ARP, drop
                 if arp_packet.dst_ip not in self.same_network_arp_drop_rules[in_port]:
                     logger.info("Router: got foreign arp request. Dropping.")
                     match = parser.OFPMatch(in_port=in_port, arp_tpa=arp_packet.dst_ip, eth_type=ether_types.ETH_TYPE_ARP)
@@ -322,6 +327,7 @@ class LearningSwitch(app_manager.RyuApp):
                 pkt.add_protocol(arp_packet)
                 pkt.serialize()
                 
+                logger.info(f"construct arp reply, contents:")
                 for p in pkt.protocols:
                     logger.info(f"> {p}")
                 
@@ -376,6 +382,7 @@ class LearningSwitch(app_manager.RyuApp):
                     outs.append(self.forward_ipv4_packet(msg, self.ip_to_mac[ipv4_packet.dst]))
                 else:
                     self.buffered_msgs[ipv4_packet.dst].append(msg)
+                    # TODO if pinging+ARPing an IP that is unknown (i.e. 10.1.2.3), the dict lookup errors
                     outs.append(self.construct_arp_request(port=self.network_to_port[ip_network((ipv4_packet.dst, self.netmask), strict=False).network_address],
                                                         dst_ip=ipv4_packet.dst,
                                                         datapath=datapath,
