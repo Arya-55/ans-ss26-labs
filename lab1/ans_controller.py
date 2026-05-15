@@ -41,7 +41,8 @@ handler = StreamHandler()
 switch_log_handler = StreamHandler()
 handler.setFormatter(Formatter(fmt="%(asctime)s, %(name)s, %(levelname)s, %(lineno)d: %(message)s"))
 switch_log_handler.setFormatter(Formatter(fmt="%(asctime)s, %(name)s, %(levelname)s, %(lineno)d: %(message)s"))
-logger.addHandler(handler), switch_logger.addHandler(switch_log_handler)
+logger.addHandler(handler)
+# switch_logger.addHandler(switch_log_handler)
 
 
 PRIO_FORWARD = 2
@@ -179,6 +180,7 @@ class LearningSwitch(app_manager.RyuApp):
         out_port = self.network_to_port[dst_network.network_address]
         actions = [parser.OFPActionSetField(eth_src=self.port_to_own_mac[out_port]),
                    parser.OFPActionSetField(eth_dst=eth_dst),
+                   parser.OFPActionDecNwTtl(),
                    parser.OFPActionOutput(out_port)]
         self.add_flow(datapath=datapath, priority=PRIO_FORWARD, match=match, actions=actions)
         logger.debug(f"Added rule: match={match}, actions={actions} on router;")
@@ -288,7 +290,8 @@ class LearningSwitch(app_manager.RyuApp):
             if ipv4_packet.dst in self.port_to_own_ip.values():
                 if ipv4_packet.proto == IPPROTO_ICMP:
                     if ipv4_packet.dst != self.port_to_own_ip[in_port]:
-                        match = parser.OFPMatch(in_port=in_port, ipv4_dst=ipv4_packet.dst)
+                        match = parser.OFPMatch(in_port=in_port, eth_type=ether_types.ETH_TYPE_IP, ipv4_dst=ipv4_packet.dst)
+                        # or maybe OFPMatch(in_port=in_port, eth_type=ether_types.ETH_TYPE_IP, ipv4_dst=ipv4_packet.dst, ip_proto=IPPROTO_ICMP)
                         actions = []
                         self.add_flow(datapath=datapath, priority=PRIO_DROP, match=match, actions=actions)
                         logger.info(f"pinged wrong Gateway: src={ipv4_packet.src}; dst={ipv4_packet.dst};")
