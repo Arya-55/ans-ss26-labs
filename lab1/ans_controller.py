@@ -19,6 +19,7 @@
  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  """
 from collections import defaultdict
+from copy import deepcopy
 from ipaddress import ip_network
 from logging import getLogger
 from ryu.base import app_manager
@@ -154,14 +155,14 @@ class LearningSwitch(app_manager.RyuApp):
             logger.info(f"Instruction to dpid={datapath.id}: broadcast")
         print(num_minus * "-" + "_packet_in_handler end" + num_minus * "-")
 
-    def forward_ipv4_packet(self, msg, eth_dst):
-        datapath = msg.datapath
+    def forward_ipv4_packet(self, datapath, data, in_port, eth_dst):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        in_port = msg.match["in_port"]
-        pkt = packet.Packet(msg.data)
-
+        pkt = packet.Packet(data)
+        logger.debug(f"Function forward_ipv4_packet(): Protocols:")
+        for p in pkt.protocols:
+            logger.debug(f"\t- {p}")
         eth_packet = pkt.get_protocol(ethernet.ethernet)
         ipv4_packet = pkt.get_protocol(ipv4.ipv4)
 
@@ -177,10 +178,7 @@ class LearningSwitch(app_manager.RyuApp):
         eth_packet.src = self.port_to_own_mac[out_port]
         eth_packet.dst = eth_dst
         eth_packet.ethertype = ether_types.ETH_TYPE_IP
-        print(f"prepared fwd: {ipv4_packet}, eth_dst={eth_dst}, eth_packet.src={eth_packet.src}, eth_packet={eth_packet}, dpid={datapath.id}, in_port={in_port}")
-        pkt = packet.Packet()
-        pkt.add_protocol(eth_packet)
-        pkt.add_protocol(ipv4_packet)
+        logger.debug(f"prepared fwd: {ipv4_packet}, eth_dst={eth_dst}, eth_packet.src={eth_packet.src}, eth_packet={eth_packet}, dpid={datapath.id}, in_port={in_port}")
         pkt.serialize()
 
         logger.info(f"Instruction to router: forward to ip={ipv4_packet.dst}, mac={eth_dst}")
@@ -214,13 +212,13 @@ class LearningSwitch(app_manager.RyuApp):
 
         eth_packet = pkt.get_protocol(ethernet.ethernet)
         ipv4_packet = pkt.get_protocol(ipv4.ipv4)
-        icmp_packet = pkt.get_protocol(icmp.icmp)
+        #icmp_packet = pkt.get_protocol(icmp.icmp)
         arp_packet = pkt.get_protocol(arp.arp)
-        tcp_packet = pkt.get_protocol(tcp.tcp)
-        udp_packet = pkt.get_protocol(udp.udp)
+        #tcp_packet = pkt.get_protocol(tcp.tcp)
+        #udp_packet = pkt.get_protocol(udp.udp)
 
         outs = []
-        if udp_packet or tcp_packet:
+        """if udp_packet or tcp_packet:
             # do udp/tcp stuff
             # no connection between ser and ext, otherwise ok
             pass
@@ -231,7 +229,7 @@ class LearningSwitch(app_manager.RyuApp):
             # gateway pings only to own (subnet) gateway (wenn subnetzte unterschiedlich, dann droppen, sonst icmp reply nach source)
             # none to external
             # none from external
-            pass
+            pass"""
 
         if arp_packet:
             # do arp stuff
@@ -278,7 +276,8 @@ class LearningSwitch(app_manager.RyuApp):
                         logger.info(f"Router: pinged wrong Gateway: src={ipv4_packet.src}; dst={ipv4_packet.dst};")
                         logger.info(f"Added drop rule: match={match}; actions={actions};")
                     else:
-                        logger.info(f"Router: ping Gateway: src={ipv4_packet.src}; dst={ipv4_packet.dst};")
+                        icmp_packet = pkt.get_protocol(icmp.icmp)
+                        logger.info(f"ping Gateway: src={ipv4_packet.src}; dst={ipv4_packet.dst};")
                         eth_packet.src, eth_packet.dst = self.port_to_own_mac[in_port], eth_packet.src
                         ipv4_packet.src, ipv4_packet.dst = self.port_to_own_ip[in_port], ipv4_packet.src
                         icmp_packet.type = icmp.ICMP_ECHO_REPLY
@@ -304,9 +303,12 @@ class LearningSwitch(app_manager.RyuApp):
                     logger.critical(f"Existing IP drop rule did not match: in_port={in_port} dst_ip={ipv4_packet.dst}")
             elif self.ip_to_mac.get(ipv4_packet.dst):
                 logger.info(f"For IP-Address={ipv4_packet.dst}, found dst_mac={self.ip_to_mac.get(ipv4_packet.dst)}")
-                outs.append(self.forward_ipv4_packet(msg, self.ip_to_mac[ipv4_packet.dst]))
+                outs.append(self.forward_ipv4_packet(datapath=datapath, data=msg.data, in_port=in_port, eth_dst=self.ip_to_mac[ipv4_packet.dst]))
             else:
-                self.buffered_msgs[ipv4_packet.dst].append(msg)
+                buffered = {"datapath": datapath, "data": deepcopy(msg.data), "in_port": in_port}
+                self.buffered_msgs[ipv4_packet.dst].append(buffered)
+                logger.info(f"MAC for IP={ipv4_packet.dst} not found. Buffer msg...")
+                logger.debug(f"put in buffer: {pformat(buffered)}")
                 outs.append(self.construct_arp_request(port=self.network_to_port[ip_network((ipv4_packet.dst, self.netmask), strict=False).network_address],
                                                        dst_ip=ipv4_packet.dst,
                                                        datapath=datapath,
