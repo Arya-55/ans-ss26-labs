@@ -32,16 +32,17 @@ from pprint import pprint, pformat
 
 
 logger, switch_logger = getLogger(__name__), getLogger(__name__)
-# loglevel = "DEBUG"
-# logger, switch_logger = getLogger(f"{__name__}_Router"), getLogger(f"{__name__}_Switch")
-# logger.propagate, switch_logger.propagate = False, False
-# logger.setLevel(loglevel), switch_logger.setLevel("INFO")
-# logger.handlers.clear(), switch_logger.handlers.clear()
-# handler = StreamHandler()
-# switch_log_handler = StreamHandler()
-# handler.setFormatter(Formatter(fmt="%(asctime)s, %(name)s, %(levelname)s, %(lineno)d: %(message)s"))
-# switch_log_handler.setFormatter(Formatter(fmt="%(asctime)s, %(name)s, %(levelname)s, %(lineno)d: %(message)s"))
-# logger.addHandler(handler), switch_logger.addHandler(switch_log_handler)
+loglevel = "DEBUG"
+logger, switch_logger = getLogger(f"{__name__}_Router"), getLogger(f"{__name__}_Switch")
+logger.propagate, switch_logger.propagate = False, False
+logger.setLevel(loglevel), switch_logger.setLevel("INFO")
+logger.handlers.clear(), switch_logger.handlers.clear()
+handler = StreamHandler()
+switch_log_handler = StreamHandler()
+handler.setFormatter(Formatter(fmt="%(asctime)s, %(name)s, %(levelname)s, %(lineno)d: %(message)s"))
+switch_log_handler.setFormatter(Formatter(fmt="%(asctime)s, %(name)s, %(levelname)s, %(lineno)d: %(message)s"))
+logger.addHandler(handler)
+# switch_logger.addHandler(switch_log_handler)
 
 
 PRIO_FIREWALL = 5
@@ -180,7 +181,7 @@ class LearningSwitch(app_manager.RyuApp):
 
         pkt = packet.Packet(msg.data)
         for p in pkt.protocols:
-            logger.info(f" - {p}")
+            switch_logger.info(f" - {p}")
 
         if datapath.id == 3:
             # handle router (s3) request
@@ -255,9 +256,9 @@ class LearningSwitch(app_manager.RyuApp):
             logger.debug(f"\t- {p}")
         eth_packet = pkt.get_protocol(ethernet.ethernet)
         ipv4_packet = pkt.get_protocol(ipv4.ipv4)
-        ipv4_packet.ttl = ipv4_packet.ttl - 1;
+        ipv4_packet.ttl = ipv4_packet.ttl - 1
 
-        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto = ipv4_packet.proto, ipv4_src=ipv4_packet.src, ipv4_dst=ipv4_packet.dst)
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=ipv4_packet.proto, ipv4_src=ipv4_packet.src, ipv4_dst=ipv4_packet.dst)
         dst_network = ip_network((ipv4_packet.dst, self.netmask), strict=False)
         out_port = self.network_to_port[dst_network.network_address]
         actions = [parser.OFPActionSetField(eth_src=self.port_to_own_mac[out_port]),
@@ -270,7 +271,7 @@ class LearningSwitch(app_manager.RyuApp):
         eth_packet.src = self.port_to_own_mac[out_port]
         eth_packet.dst = eth_dst
         eth_packet.ethertype = ether_types.ETH_TYPE_IP
-        logger.debug(f"prepared fwd: {ipv4_packet}, eth_dst={eth_dst}, eth_packet.src={eth_packet.src}, eth_packet={eth_packet}, dpid={datapath.id}, in_port={in_port}")
+        logger.debug(f"prepared fwd: {ipv4_packet}, eth_dst={eth_dst}, eth_packet.src={eth_packet.src}, eth_packet={eth_packet}, dpid={datapath.id}, in_port={in_port}, data={pkt.data}")
         pkt.serialize()
 
         logger.info(f"forward to ip={ipv4_packet.dst}, mac={eth_dst}")
@@ -431,7 +432,7 @@ class LearningSwitch(app_manager.RyuApp):
                     self.firewall_tracked.append(firewall_entry)
 
                     # There is an entry in the firewall-table fitting this packet
-                    match = parser.OFPMatch(eth_type=0x0800, **firewall_entry)
+                    match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, **firewall_entry)
 
                     # if icmp, redirect back to controller so it can send icmp unreachable
                     actions = []
