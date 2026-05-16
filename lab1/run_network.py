@@ -55,85 +55,6 @@ class NetworkTopo(Topo):
         self.addLink("s2", "ser", bw=15, delay="10ms")
 
 
-class SwitchFlowTester:
-
-    def __init__(self, net: Mininet):
-        self.net = net
-
-        self.test_data_switch_flows = defaultdict(dict)
-        switchname = "s1"
-        port_to_hop = self.get_port_to_hop(switchname)
-        self.test_data_switch_flows[switchname][net.get("h1").MAC()] = port_to_hop["h1"]
-        self.test_data_switch_flows[switchname][net.get("h2").MAC()] = port_to_hop["h2"]
-        self.test_data_switch_flows[switchname][net.get("ext").MAC()] = port_to_hop["s3"]
-        self.test_data_switch_flows[switchname][net.get("ser").MAC()] = port_to_hop["s3"]
-
-        switchname = "s2"
-        port_to_hop = self.get_port_to_hop(switchname)
-        self.test_data_switch_flows[switchname][net.get("h1").MAC()] = port_to_hop["s3"]
-        self.test_data_switch_flows[switchname][net.get("h2").MAC()] = port_to_hop["s3"]
-        self.test_data_switch_flows[switchname][net.get("ext").MAC()] = port_to_hop["s3"]
-        self.test_data_switch_flows[switchname][net.get("ser").MAC()] = port_to_hop["ser"]
-
-        switchname = "s3"
-        port_to_hop = self.get_port_to_hop(switchname)
-        self.test_data_switch_flows[switchname][net.get("h1").MAC()] = port_to_hop["s1"]
-        self.test_data_switch_flows[switchname][net.get("h2").MAC()] = port_to_hop["s1"]
-        self.test_data_switch_flows[switchname][net.get("ext").MAC()] = port_to_hop["ext"]
-        self.test_data_switch_flows[switchname][net.get("ser").MAC()] = port_to_hop["s2"]
-
-        for switchname in self.test_data_switch_flows:
-            for hostmac in self.test_data_switch_flows[switchname]:
-                mininet.log.info(f"Switch={switchname}: {hostmac} --> {self.test_data_switch_flows[switchname][hostmac]}")
-
-    def get_port_to_hop(self, switchname):
-        switch = self.net.get(switchname)
-        ret = {}
-        for port_no, intf in switch.intfs.items():
-            if port_no == 0:  # except lo
-                continue
-            link = intf.link
-            if link.intf1.node.name != switchname:
-                ret[link.intf1.node.name] = port_no
-            else:
-                ret[link.intf2.node.name] = port_no
-        return ret
-
-    @staticmethod
-    def cast_to_int_if_possible(arg):
-        try:
-            return int(arg)
-        except ValueError:
-            return arg
-
-    def parse_action_str(self, action_str: str):
-        action, target = action_str.split(":")
-        return action, self.cast_to_int_if_possible(target)
-
-    def test(self):
-        flows = defaultdict(dict)
-        for switch in self.net.switches:
-            sdpid = int(switch.dpid)
-            resp = requests.get(f"http://localhost:8080/stats/flow/{sdpid}")
-            flows_json = resp.json()[str(sdpid)]
-
-            for d in flows_json:
-                match = d["match"].get("dl_dst")
-                flows[switch.name][match] = [d["actions"]]
-                for actions in flows[switch.name][match]:
-                    for action_str in actions:
-                        _, port = self.parse_action_str(action_str)
-                        flows[switch.name][match] = port
-
-        for switchname in self.test_data_switch_flows:
-            for hostmac, port_no in self.test_data_switch_flows[switchname].items():
-                test = flows[switchname].get(hostmac) == port_no
-                if test:
-                    mininet.log.info(f"Success: Switch={switchname}: Rule: {hostmac} --> {port_no} == {flows[switchname].get(hostmac)}")
-                else:
-                    mininet.log.info(f"Failure: Switch={switchname}: Rule: {hostmac} --> {port_no} != {flows[switchname].get(hostmac)}")
-
-
 def run():
     topo = NetworkTopo()
     net = Mininet(topo=topo,
@@ -152,10 +73,20 @@ def run():
         host.cmd("sysctl -w net.ipv6.conf.lo.disable_ipv6=1")
 
     net.start()
-    #net.pingAll()
+    net.pingAll()
+    net.iperf((net.get("h1"), net.get("h2")))
+    net.iperf((net.get("h1"), net.get("ser")))
+    net.iperf((net.get("h1"), net.get("ext")))
 
-    # switch_flow_tester = SwitchFlowTester(net)
-    # gitswitch_flow_tester.test()
+    net.iperf((net.get("h2"), net.get("h1")))
+    net.iperf((net.get("h2"), net.get("ser")))
+    net.iperf((net.get("h2"), net.get("ext")))
+
+    net.iperf((net.get("ser"), net.get("h1")))
+    net.iperf((net.get("ser"), net.get("h2")))
+
+    net.iperf((net.get("ext"), net.get("h1")))
+    net.iperf((net.get("ext"), net.get("h2")))
 
     CLI(net)
     net.stop()
