@@ -407,15 +407,15 @@ class LearningSwitch(app_manager.RyuApp):
                 eth_packet.src, eth_packet.dst = self.port_to_own_mac[in_port], eth_packet.src
                 arp_packet.src_mac, arp_packet.dst_mac = self.port_to_own_mac[in_port], arp_packet.src_mac
                 arp_packet.src_ip, arp_packet.dst_ip = self.port_to_own_ip[in_port], arp_packet.src_ip
-                arp_packet.opcode = 2
+                arp_packet.opcode = arp.ARP_REPLY
                 pkt = packet.Packet()
                 pkt.add_protocol(eth_packet)
                 pkt.add_protocol(arp_packet)
                 pkt.serialize()
                 
-                logger.info(f"construct arp reply, contents:")
+                logger.debug(f"construct arp reply, contents:")
                 for p in pkt.protocols:
-                    logger.info(f"> {p}")
+                    logger.debug(f"> {p}")
                 
                 outs.append(self.reply_packet_to_in_port(data=pkt.data, datapath=datapath, parser=parser, in_port=in_port, ofproto=ofproto))
                 logger.info(f"Instruction: send arp reply")
@@ -436,13 +436,8 @@ class LearningSwitch(app_manager.RyuApp):
                     # if icmp, redirect back to controller so it can send icmp unreachable
                     actions = []
                     if icmp_packet:
-                        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
-                                                ofproto.OFPCML_NO_BUFFER)]
-                        
-                    self.add_flow(datapath=datapath, 
-                                priority=PRIO_FIREWALL, 
-                                match=match, 
-                                actions=actions)
+                        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+                    self.add_flow(datapath=datapath, priority=PRIO_FIREWALL, match=match, actions=actions)
                     logger.info(f"Added firewall rule on router: match={match}, action={actions}")
 
                 # Send a "Destination Unreachable - Communication Administratively Prohibited" ICMP
