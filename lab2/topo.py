@@ -21,14 +21,6 @@
 
 from typing import Literal
 
-
-# Class for an edge in the graph
-class Edge:
-	def __init__(self, lnode: Node, rnode: Node):
-		self.lnode = lnode
-		self.rnode = rnode
-
-
 # Class for a node in the graph
 class Node:
 	def __init__(self, *, pod, switch, id, type: Literal["core", "aggr", "edge", "serv"]):
@@ -58,6 +50,11 @@ class Node:
 	def is_neighbor(self, node):
 		return node in self.neighbors
 
+# Class for an edge in the graph
+class Edge:
+	def __init__(self, lnode: Node, rnode: Node):
+		self.lnode = lnode
+		self.rnode = rnode
 
 class Fattree:
 
@@ -67,6 +64,7 @@ class Fattree:
 		self.servers = []			# servers, aka leaf nodes
 		self.edges = []				# save edges here instead of in the nodes
 		self.generate(num_ports)
+		self.sanity_check()
 
 
 	def generate(self, num_ports: int):
@@ -86,14 +84,14 @@ class Fattree:
 
 		k = num_ports
 		k_half = int(k/2)
-		print(f"Building a Fat-Tree with {k} ports\n\t=> {k ** 3 / 4} Servers\n\t=>{k_half} Edge/Aggr Switches per Pod\n\t=>{(k_half) ** 2} Core Switches")
+		print(f"Building a Fat-Tree with {k} ports ({int(k ** 3 / 4)} Servers, {k_half} Edge/Aggr Switches per Pod, {(k_half) ** 2} Core Switches)")
 
 		# create Core Switches
 		core_switches = []
-		for j in range(1, k_half):
-			for i in range(1, k_half):
+		for j in range(1, k_half + 1):
+			for i in range(1, k_half + 1):
 				core_switches.append(Node(pod=k, switch=j, id=i, type="core"))
-		self.switches = core_switches
+		self.switches += core_switches
 
 		# Iterate over pods to generate and connect the switches and servers in them
 		for pod_id in range(k):
@@ -102,14 +100,15 @@ class Fattree:
 
 			# add pod switches, all have the id=1 in the last position
 			for switch_id in range(k):
-				if switch_id < (k/2):
+				if switch_id < (k_half):
 					# add edge switch
 					edge_switch = Node(pod=pod_id, switch=switch_id, id=1, type="edge")
 					
 					# add servers and connect them to edge switch
 					servers = []
-					for host_id in range(1, k_half):
+					for host_id in range(2, k_half + 2):
 						server = Node(pod=pod_id, switch=switch_id, id=host_id, type="serv")
+						servers.append(server)
 						edge = edge_switch.add_edge(server)
 						self.edges.append(edge)
 
@@ -140,21 +139,25 @@ class Fattree:
 						self.edges.append(edge)
 
 					aggr_switches.append(aggr_switch)
-			self.switches += aggr_switches + edge_switches  
+			self.switches += edge_switches + aggr_switches  
 
 
 	def sanity_check(self):
 		print("Sanity Check for generated topology:")
 
+		num_servers = int(self.k ** 3 / 4)
 		num_core_switches = int(self.k / 2) ** 2						# formula from paper
 		num_pod_layer_switches = int(self.k ** 2 / 2) 					# k/2 per pod for k pods
-		num_switches = num_core_switches + num_pod_layer_switches 
-		num_edges = num_switches * self.k								# each switch needs to have all ports connected
+		num_switches = num_core_switches + 2 * num_pod_layer_switches 
+		num_edges = num_pod_layer_switches * self.k + num_servers		
+		# edges between switches are one for each port on the aggr switches, overall edges also include those to servers
 
-		print(f" - Number of Servers:      \tshould be {int(self.k ** 3 / 4)},\t is {len(self.servers)}")
-		print(f" - Number if Switches:     \tshould be {num_switches},\t is {len(self.switches)}")
-		print(f" - Number of Edge Switches:\tshould be {num_pod_layer_switches},\t is {len([x for x in self.switches if x.type == "edge"])}")
-		print(f" - Number of Aggr Switches:\tshould be {num_pod_layer_switches},\t is {len([x for x in self.switches if x.type == "aggr"])}")
-		print(f" - Number of Core Switches:\tshould be {num_core_switches},\t is {len([x for x in self.switches if x.type == "core"])}")
-		print(f" - Number of Pods:		   \tshould be {self.k},\t is {len(set([x.pod for x in self.switches if x.type == "aggr"]))}")
+		print(f" - Number of Servers:      \tshould be {num_servers},\t is {len(self.servers)}")
+		print(f" - Number of Switches:     \tshould be {num_switches},\t is {len(self.switches)}")
+		print(f" - Number of Edge Switches:\tshould be {num_pod_layer_switches},\t is {len([x for x in self.switches if x.type == 'edge'])}")
+		print(f" - Number of Aggr Switches:\tshould be {num_pod_layer_switches},\t is {len([x for x in self.switches if x.type == 'aggr'])}")
+		print(f" - Number of Core Switches:\tshould be {num_core_switches},\t is {len([x for x in self.switches if x.type == 'core'])}")
+		print(f" - Number of Pods:         \tshould be {self.k},\t is {len(set([x.pod for x in self.switches if x.type == 'aggr']))}")
 		print(f" - Number of Edges:        \tshould be {num_edges},\t is {len(self.edges)}")
+		print(f"All Servers need to have just one neighbor: {all([len(x.neighbors) == 1 for x in self.servers])}")
+		print(f"All Switches need to have {self.k} neighbors: {all([len(x.neighbors) == self.k for x in self.switches])}")
