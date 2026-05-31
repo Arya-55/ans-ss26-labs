@@ -36,7 +36,46 @@ from mininet.node import Node, OVSKernelSwitch, RemoteController
 from mininet.topo import Topo
 from mininet.util import waitListening, custom
 
+import networkx as nx
+import matplotlib.pyplot as plt
+
 import topo
+
+# def _generate_net_graph(net):
+#     graph = nx.DiGraph()
+
+
+#     for h in net.hosts:
+#         print(h) 
+#         graph.add_node(h.name, type = "host", ip = h.IP)
+
+#     for s in net.switches:
+#         graph.add_node(s.name, type = "switch", ip = s.params.get("ip"))
+
+#     for l in net.links:
+#         lnode = l.intf1.node.name
+#         rnode = l.intf2.node.name
+#         graph.add_edge(lnode, rnode)
+
+#     node_positions = nx.spring_layout(graph)
+
+
+#     #positions = nx.get_node_attributes(graph, "pos")
+
+#     nx.draw(graph, node_positions, with_labels=True)
+#     # nx.draw_networkx_nodes(
+#     #     graph, 
+#     #     node_positions,
+#     #     nodelist=graph.nodes,
+#     #     node_shape='o',
+#     #     node_size=300
+#     # )
+#     # nx.draw_networkx_edges(graph, node_positions, width=10)
+#     # nx.draw_networkx_labels(graph, node_positions)
+
+#     plt.title(f"Generated Fatnet Topology {len(graph.edges)}")
+#     plt.axis("off")
+#     plt.savefig("topology.png", dpi=300, bbox_inches="tight")
 
 
 class FattreeNet(Topo):
@@ -54,7 +93,6 @@ class FattreeNet(Topo):
         # aggr (a) swichtes: "s<p>a<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [num_ports/2, num_ports - 1]
         # edge (e) switches: "s<p>e<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [0, num_ports/2 - 1]
         switches = ft_topo.switches
-        print(f"NUMBER SWITCHES: {len(switches)}")
         for switch in switches:
             # ip addresses need to be assigned at runtime, hence the dict in this class
             match switch.type:
@@ -118,6 +156,7 @@ def run(graph_topo):
     lg.setLogLevel('info')
     # mininet.clean.cleanup()
     net = make_mininet_instance(graph_topo)
+    # _generate_net_graph(net)
 
     info('*** Starting network ***\n')
     net.start()
