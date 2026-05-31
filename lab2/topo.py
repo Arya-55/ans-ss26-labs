@@ -160,4 +160,60 @@ class Fattree:
 		print(f" - Number of Pods:         \tshould be {self.k},\t is {len(set([x.pod for x in self.switches if x.type == 'aggr']))}")
 		print(f" - Number of Edges:        \tshould be {num_edges},\t is {len(self.edges)}")
 		print(f"All Servers need to have just one neighbor: {all([len(x.neighbors) == 1 for x in self.servers])}")
+		print(f"The neighbors of all Servers must be edge switches: {all([n.type == 'edge' for x in self.servers for n in x.neighbors])}")
 		print(f"All Switches need to have {self.k} neighbors: {all([len(x.neighbors) == self.k for x in self.switches])}")
+
+		core_check = True
+		pod_check = True
+		for switch in self.switches:
+			# If something is wrong, set value to False
+
+			match switch.type:
+				case "core":
+					# each core switch is connected to exactly one aggr switch in one pod
+					if any([n.pod == self.k for n in switch.neighbors]):
+						print(f"ERROR: Core switch with IP {switch.ip_address} is connected to another Core Switch")
+						core_check = False
+					if not all(n.type == "aggr" for n in switch.neighbors):
+						print(f"ERROR: Core switch with IP {switch.ip_address} has non-aggr switches as neighbors")
+						core_check = False 
+					if not sorted([n.pod for n in switch.neighbors]) == list(range(self.k)):
+						print(f"ERROR: Core switch with IP {switch.ip_address} has not one connection to each pod")
+						core_check = False 
+				case "edge":
+					# all connections that are not to servers are to aggr switches in the same pod
+					aggr_neighbors = [n for n in switch.neighbors if n.type == "aggr"]
+					if len(aggr_neighbors) != int(self.k / 2):
+						print(f"ERROR: Edge switch with IP {switch.ip_address} has the wrong number of aggr neighbors")
+						pod_check = False
+					if not all([an.pod == switch.pod for an in aggr_neighbors]):
+						print(f"ERROR: Edge switch with IP {switch.ip_address} is connected to aggr switch from different pod")
+						pod_check = False
+				case "aggr":
+					# all connections that are not to core switches are to edge switches in the same pod
+					edge_neighbors = [n for n in switch.neighbors if n.type == "edge"]
+					if len(edge_neighbors) != int(self.k / 2):
+						print(f"ERROR: Aggr switch with IP {switch.ip_address} has the wrong number of edge neighbors")
+						pod_check = False
+					if not all([en.pod == switch.pod for en in edge_neighbors]):
+						print(f"ERROR: Aggr switch with IP {switch.ip_address} is connected to edge switch from different pod")
+						pod_check = False
+				case _:
+					raise AssertionError(f"Unexpected switch.type: {switch.type}")
+				
+		if core_check:
+			print(f"Each core switch needs to be connected to exactly one aggr switch of each pod: {core_check}")
+		if pod_check:
+			print(f"Edge and aggr switches may only be interconnected within one pod: {pod_check}")
+
+
+
+		
+
+		
+
+
+
+		# each core switch needs to be connected to all pods
+		# within a pod each edge switch is connected to each aggr switch, but not outside
+
