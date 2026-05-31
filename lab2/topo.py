@@ -205,15 +205,5 @@ class Fattree:
 			print(f"Each core switch needs to be connected to exactly one aggr switch of each pod: {core_check}")
 		if pod_check:
 			print(f"Edge and aggr switches may only be interconnected within one pod: {pod_check}")
-
-
-
-		
-
-		
-
-
-
-		# each core switch needs to be connected to all pods
-		# within a pod each edge switch is connected to each aggr switch, but not outside
+		print()
 

@@ -24,6 +24,7 @@
 import os
 import subprocess
 import time
+from typing import Dict
 
 import mininet
 import mininet.clean
@@ -46,8 +47,60 @@ class FattreeNet(Topo):
     def __init__(self, ft_topo):
 
         Topo.__init__(self)
+        
+        # Adding Switches, Switch naming convention:
+        # The switch type identifier is between the two numbers because we would otherwise need another divider
+        # core (c) switches: "s<j>c<i>" where j and i are their position in the grid (ip: 10.num_ports.j.i)
+        # aggr (a) swichtes: "s<p>a<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [num_ports/2, num_ports - 1]
+        # edge (e) switches: "s<p>e<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [0, num_ports/2 - 1]
+        switches = ft_topo.switches
+        print(f"NUMBER SWITCHES: {len(switches)}")
+        for switch in switches:
+            # ip addresses need to be assigned at runtime, hence the dict in this class
+            match switch.type:
+                case "core":
+                    name = f"s{switch.switch}c{switch.id}"
+                case "aggr":
+                    name = f"s{switch.pod}a{switch.switch}"
+                case "edge":
+                    name = f"s{switch.pod}e{switch.switch}"
+                case _:
+                    print("##########")
+                    raise AssertionError(f"Unexpected switch.type: {switch.type}") 
+            
+            self.addSwitch(name, ip=switch.ip_address)
 
-        # TODO: please complete the network generation logic here
+        # Adding Hosts
+        # Host naming convention: "h<h>s<s>p<p>" where h is the host-id, p the pod-id and s the switch-id (ip: 10.p.s.h)
+        servers = ft_topo.servers
+        for server in servers:
+            name = f"h{server.id}s{server.switch}p{server.pod}"
+            self.addHost(name, ip=server.ip_address)
+
+        # Adding Links
+        edges = ft_topo.edges
+        for edge in edges:
+            lnode = edge.lnode
+            rnode = edge.rnode
+
+            match rnode.type:
+                case "serv":
+                    assert lnode.type == "edge"
+                    lname = f"s{lnode.pod}e{lnode.switch}"
+                    rname = f"h{rnode.id}s{rnode.switch}p{rnode.pod}"
+                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
+                case "edge":
+                    assert lnode.type == "aggr"
+                    lname = f"s{lnode.pod}a{lnode.switch}"
+                    rname = f"s{rnode.pod}e{rnode.switch}"
+                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
+                case "aggr":
+                    assert lnode.type == "core"
+                    lname = f"s{lnode.switch}c{lnode.id}"
+                    rname = f"s{rnode.pod}a{rnode.switch}"
+                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
+                case _:
+                    raise AssertionError(f"Unexpected rnode.type: {rnode.type}")
 
 
 def make_mininet_instance(graph_topo):
@@ -68,6 +121,24 @@ def run(graph_topo):
 
     info('*** Starting network ***\n')
     net.start()
+
+    # # Adding IP addresses to switches
+    # switches = graph_topo.switches
+    # for switch in switches:
+    #     match switch.type:
+    #         case "core":
+    #             name = f"s{switch.switch}c{switch.id}"
+    #         case "aggr":
+    #             name = f"s{switch.pod}a{switch.switch}"
+    #         case "edge":
+    #             name = f"s{switch.pod}e{switch.switch}"
+    #         case _:
+    #             print("##########")
+    #             raise AssertionError(f"Unexpected switch.type: {switch.type}") 
+    #     s = net.get(name)
+    #     s.cmd(f'ifconfig {name} {switch.ip_address}')
+    #     # These are not visible in the dump command, but if you run ifconfig on switches you can see them as "inet" entries
+
     info('*** Running CLI ***\n')
     CLI(net)
     info('*** Stopping network ***\n')
