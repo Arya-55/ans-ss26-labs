@@ -38,44 +38,49 @@ from mininet.util import waitListening, custom
 
 import networkx as nx
 import matplotlib.pyplot as plt
+import numpy as np
 
 import topo
 
-# def _generate_net_graph(net):
-#     graph = nx.DiGraph()
+def _generate_net_graph(net):
+    # https://networkx.org/documentation/stable/auto_examples/drawing/plot_multipartite_graph.html
+    graph = nx.Graph()
 
+    for h in net.hosts:
+        graph.add_node(h.name, type = "host", ip = h.IP())
+        graph.nodes[h.name]["layer"] = 0
 
-#     for h in net.hosts:
-#         print(h) 
-#         graph.add_node(h.name, type = "host", ip = h.IP)
+    for s in net.switches:
+        if "c" in s.name:
+            layer = 3
+        if "a" in s.name:
+            layer = 2
+        if "e" in s.name:
+            layer = 1
 
-#     for s in net.switches:
-#         graph.add_node(s.name, type = "switch", ip = s.params.get("ip"))
+        graph.add_node(s.name, type = "switch", ip = s.params.get("ip"))
+        graph.nodes[s.name]["layer"] = layer
 
-#     for l in net.links:
-#         lnode = l.intf1.node.name
-#         rnode = l.intf2.node.name
-#         graph.add_edge(lnode, rnode)
+    for l in net.links:
+        lnode = l.intf1.node.name
+        rnode = l.intf2.node.name
+        graph.add_edge(lnode, rnode)
 
-#     node_positions = nx.spring_layout(graph)
+    pos = nx.multipartite_layout(graph, subset_key="layer", align="horizontal", scale=len(net.hosts))
+    fig = plt.figure(figsize=(18,10))
+    nx.draw_networkx_nodes(
+        graph, 
+        pos,
+        nodelist=graph.nodes,
+        node_shape='o',
+        node_size=2500
+    )
+    nx.draw_networkx_edges(graph, pos, width=2)
+    nx.draw_networkx_labels(graph, pos)
 
-
-#     #positions = nx.get_node_attributes(graph, "pos")
-
-#     nx.draw(graph, node_positions, with_labels=True)
-#     # nx.draw_networkx_nodes(
-#     #     graph, 
-#     #     node_positions,
-#     #     nodelist=graph.nodes,
-#     #     node_shape='o',
-#     #     node_size=300
-#     # )
-#     # nx.draw_networkx_edges(graph, node_positions, width=10)
-#     # nx.draw_networkx_labels(graph, node_positions)
-
-#     plt.title(f"Generated Fatnet Topology {len(graph.edges)}")
-#     plt.axis("off")
-#     plt.savefig("topology.png", dpi=300, bbox_inches="tight")
+    plt.title(f"Generated Fatnet Topology", fontsize=20)
+    plt.axis("off")
+    fig.savefig("topology.png", dpi=600, bbox_inches="tight")
 
 
 class FattreeNet(Topo):
@@ -156,27 +161,10 @@ def run(graph_topo):
     lg.setLogLevel('info')
     # mininet.clean.cleanup()
     net = make_mininet_instance(graph_topo)
-    # _generate_net_graph(net)
+    _generate_net_graph(net)
 
     info('*** Starting network ***\n')
     net.start()
-
-    # # Adding IP addresses to switches
-    # switches = graph_topo.switches
-    # for switch in switches:
-    #     match switch.type:
-    #         case "core":
-    #             name = f"s{switch.switch}c{switch.id}"
-    #         case "aggr":
-    #             name = f"s{switch.pod}a{switch.switch}"
-    #         case "edge":
-    #             name = f"s{switch.pod}e{switch.switch}"
-    #         case _:
-    #             print("##########")
-    #             raise AssertionError(f"Unexpected switch.type: {switch.type}") 
-    #     s = net.get(name)
-    #     s.cmd(f'ifconfig {name} {switch.ip_address}')
-    #     # These are not visible in the dump command, but if you run ifconfig on switches you can see them as "inet" entries
 
     info('*** Running CLI ***\n')
     CLI(net)
