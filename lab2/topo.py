@@ -32,11 +32,13 @@ class Node:
 		self.id = id					# 1 for all switches in one pod, [2, k/2+1] for servers, [1, k/2] for core switches
 		self.ip_address = f"{self.net}.{self.pod}.{self.switch}.{self.id}"
 
+
 	# Add an edge connected to another node
 	def add_edge(self, node):
 		self.neighbors.append(node)
 		node.neighbors.append(self)
 		return Edge(self, node)
+	
 
 	# Remove an edge to a neighbor
 	def remove_edge(self, node):
@@ -46,9 +48,11 @@ class Node:
 		else:
 			print(f"Couldn't remove edge, node is no neighbor.")
 
+
 	# Decide if another node is a neighbor
 	def is_neighbor(self, node):
 		return node in self.neighbors
+
 
 # Class for an edge in the graph
 class Edge:

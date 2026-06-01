@@ -24,7 +24,8 @@
 import os
 import subprocess
 import time
-from typing import Dict
+from typing import Dict, List
+import re
 
 import mininet
 import mininet.clean
@@ -38,17 +39,83 @@ from mininet.util import waitListening, custom
 
 import networkx as nx
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import numpy as np
 
 import topo
 
-def _generate_net_graph(net):
-    # https://networkx.org/documentation/stable/auto_examples/drawing/plot_multipartite_graph.html
-    graph = nx.Graph()
+def _lt(ident1:str, ident2:str):
+    numbers1 = []
+    numbers2 = []
+    
+    if ident1 == ident2:
+        return False
+    else:
+        if ident1.startswith("h"):
+            # host
+            if not ident2.startswith("h"):
+                # compared to switch
+                return False
+            else:
+                # compared to another host
+                numbers1 = re.findall(r"\d", ident1)
+                numbers2 = re.findall(r"\d", ident2)
+                numbers1.reverse()
+                numbers2.reverse()
+        else:
+            # switch 
+            if not ident2.startswith("s"):
+                # compared to host
+                return True
+            else:
+                # compared to another switch
+                numbers1 = re.findall(r"\d", ident1)
+                numbers2 = re.findall(r"\d", ident2)
+    
+    for i in range(len(numbers1)):
+        if numbers1[i] == numbers2[i]:
+            continue
+        else:
+            return numbers1[i] < numbers2[i]
 
-    for h in net.hosts:
-        graph.add_node(h.name, type = "host", ip = h.IP())
-        graph.nodes[h.name]["layer"] = 0
+
+def _sort_node_positions(pos):
+    names = list(pos.keys())
+    coordinates = list(pos.values())
+    
+    for i in range(len(names)):
+        for j in range(len(names) - i - 1):
+            name1 = names[j]
+            coordinates1 = coordinates[j]
+            letters1 = "".join(re.findall(r"[a-z]", name1))
+
+            name2 = names[j + 1]
+            coordinates2 = coordinates[j + 1]
+            letters2 = "".join(re.findall(r"[a-z]", name2))
+
+            if _lt(name2, name1):
+                if letters1 == letters2:
+                    # comparison within layer: compare x - coordinates
+                    if coordinates2[1] < coordinates1[1]:
+                        # coordinates of names do fit order of names -> switch together with names
+                        coordinates[j], coordinates[j + 1] = coordinates[j + 1], coordinates[j]
+                else:
+                    # comparisons between layers -> always switch name and coordinates
+                    coordinates[j], coordinates[j + 1] = coordinates[j + 1], coordinates[j]
+
+                # switch names
+                names[j], names[j + 1] = names[j + 1], names[j]      
+
+    # Built new pos dict
+    sorted_pos = {}
+    for i in range(len(names)):
+        sorted_pos[names[i]] = coordinates[i]
+    
+    return sorted_pos
+
+
+def _generate_net_graph(net, k):
+    graph = nx.Graph()
 
     for s in net.switches:
         if "c" in s.name:
@@ -61,26 +128,63 @@ def _generate_net_graph(net):
         graph.add_node(s.name, type = "switch", ip = s.params.get("ip"))
         graph.nodes[s.name]["layer"] = layer
 
+    for h in net.hosts:
+        graph.add_node(h.name, type = "host", ip = h.IP())
+        graph.nodes[h.name]["layer"] = 0
+
     for l in net.links:
         lnode = l.intf1.node.name
         rnode = l.intf2.node.name
         graph.add_edge(lnode, rnode)
 
     pos = nx.multipartite_layout(graph, subset_key="layer", align="horizontal", scale=len(net.hosts))
-    fig = plt.figure(figsize=(18,10))
+    for name, coordinates in pos.items():
+        if name.startswith("s"):
+            if "c" in name:
+                pos[name] = [coordinates[0] * k/2, coordinates[1] * 1.5]
+            else:
+                pos[name] = [coordinates[0] * k/2, coordinates[1]]
+    pos = _sort_node_positions(pos)
+
+    # this value is carefully tried and errored to make the graph look nice for ":D
+    fig_width = int((np.round(np.sqrt(300/np.pi))) + 50 / 72 * len(net.hosts))   # diameter of graph node with padding / 72 ppi * number of hosts
+    fig = plt.figure(figsize=(fig_width, 10))
+    ax = plt.gca()
+    
+    # draw graph
     nx.draw_networkx_nodes(
         graph, 
         pos,
         nodelist=graph.nodes,
         node_shape='o',
-        node_size=2500
+        node_size=1300
     )
-    nx.draw_networkx_edges(graph, pos, width=2)
-    nx.draw_networkx_labels(graph, pos)
+    nx.draw_networkx_edges(graph, pos, width=1)
+    nx.draw_networkx_labels(graph, pos, font_size=9)
 
-    plt.title(f"Generated Fatnet Topology", fontsize=20)
-    plt.axis("off")
-    fig.savefig("topology.png", dpi=600, bbox_inches="tight")
+    # draw rectangles for pods:
+    width = pos[f"s0e{int(k/2)-1}"][0] - pos["s0e0"][0]
+    height = pos[f"s0a{int(k/2)}"][1] - pos["s0e0"][1]
+    for i in range(k):
+        x, y = pos[f"s{i}e0"]                       # switch position on upper left of pod
+        xmargin = 0.15 * k
+        ymargin = 0.1 * k 
+        rect = Rectangle(
+            (x - xmargin, y - ymargin), 
+            width = abs(width) + 2*xmargin, 
+            height = abs(height) + 2*ymargin,
+            edgecolor="red",
+            facecolor="none",
+            linewidth=2)
+        ax.add_patch(rect)
+
+    plt.title(f"Generated Fatnet Topology (num_ports={k})", fontsize=20)
+    plt.margins(0)
+    xmin = min(np.array(list(pos.values()))[:,0]) - 1
+    xmax = max(np.array(list(pos.values()))[:,0]) + 1
+    plt.xlim(xmin, xmax)
+    ax.set_axis_off()
+    fig.savefig(f"topology_{k}-port.png", dpi=300, bbox_inches="tight")
 
 
 class FattreeNet(Topo):
@@ -147,7 +251,6 @@ class FattreeNet(Topo):
 
 
 def make_mininet_instance(graph_topo):
-
     net_topo = FattreeNet(graph_topo)
     net = Mininet(topo=net_topo, controller=None, autoSetMacs=True)
     net.addController('c0', controller=RemoteController,
@@ -156,16 +259,14 @@ def make_mininet_instance(graph_topo):
 
 
 def run(graph_topo):
-
     # Run the Mininet CLI with a given topology
     lg.setLogLevel('info')
     # mininet.clean.cleanup()
     net = make_mininet_instance(graph_topo)
-    _generate_net_graph(net)
+    _generate_net_graph(net, k=graph_topo.k)
 
     info('*** Starting network ***\n')
     net.start()
-
     info('*** Running CLI ***\n')
     CLI(net)
     info('*** Stopping network ***\n')
