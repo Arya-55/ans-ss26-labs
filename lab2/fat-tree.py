@@ -202,7 +202,7 @@ class FattreeNet(Topo):
         # aggr (a) swichtes: "s<p>a<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [num_ports/2, num_ports - 1]
         # edge (e) switches: "s<p>e<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [0, num_ports/2 - 1]
         switches = ft_topo.switches
-        for switch in switches:
+        for i, switch in enumerate(switches, start=1):
             # ip addresses need to be assigned at runtime, hence the dict in this class
             match switch.type:
                 case "core":
@@ -215,7 +215,7 @@ class FattreeNet(Topo):
                     print("##########")
                     raise AssertionError(f"Unexpected switch.type: {switch.type}") 
             
-            self.addSwitch(name, ip=switch.ip_address)
+            self.addSwitch(name, ip=switch.ip_address, dpid=f"{i:016d}")
 
         # Adding Hosts
         # Host naming convention: "h<h>s<s>p<p>" where h is the host-id, p the pod-id and s the switch-id (ip: 10.p.s.h)
@@ -264,6 +264,11 @@ def run(graph_topo):
     # mininet.clean.cleanup()
     net = make_mininet_instance(graph_topo)
     _generate_net_graph(net, k=graph_topo.k)
+
+    for host in net.hosts:  # reduce log noise
+        host.cmd("sysctl -w net.ipv6.conf.all.disable_ipv6=1")
+        host.cmd("sysctl -w net.ipv6.conf.default.disable_ipv6=1")
+        host.cmd("sysctl -w net.ipv6.conf.lo.disable_ipv6=1")
 
     info('*** Starting network ***\n')
     net.start()

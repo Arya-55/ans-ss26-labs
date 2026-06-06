@@ -28,7 +28,7 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.mac import haddr_to_bin
-from ryu.lib.packet import packet
+from ryu.lib.packet import packet, ether_types
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
 
@@ -37,6 +37,10 @@ from ryu.topology.api import get_switch, get_link
 from ryu.app.wsgi import ControllerBase
 
 import topo
+
+
+PRIO_DROP = 1
+
 
 class SPRouter(app_manager.RyuApp):
 
@@ -69,6 +73,11 @@ class SPRouter(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
+
+        # reduce log noise
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6)
+        actions = []
+        self.add_flow(datapath, PRIO_DROP, match, actions)
 
 
     # Add a flow entry to the flow-table
