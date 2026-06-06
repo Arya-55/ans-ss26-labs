@@ -36,6 +36,7 @@ from ryu.topology import event, switches
 from ryu.topology.api import get_switch, get_link
 from ryu.app.wsgi import ControllerBase
 
+import logging
 import topo
 
 
@@ -51,6 +52,13 @@ class SPRouter(app_manager.RyuApp):
         
         # Initialize the topology with #ports=4
         self.topo_net = topo.Fattree(4)
+
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)-8s %(name)s: %(message)s"))
+        self.logger.handlers = []
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.propagate = False
 
 
     # Topology discovery
