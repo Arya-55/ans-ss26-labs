@@ -19,18 +19,23 @@
  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  """
 
+from collections import defaultdict
 from typing import Literal
 
 # Class for a node in the graph
 class Node:
-	def __init__(self, *, pod, switch, id, type: Literal["core", "aggr", "edge", "serv"]):
-		self.neighbors = []
+	def __init__(self, *, pod, switch, id, type: Literal["core", "aggr", "edge", "serv"], dpid):
+		self.neighbors: list[Node] = []
 		self.type = type				# core | aggregation | edge | server
 		self.net = 10
 		self.pod = pod					# k if core switch, pod_identifier for everything else
 		self.switch = switch			# [1, k/2] for core switches, [1, k] for pod switches
 		self.id = id					# 1 for all switches in one pod, [2, k/2+1] for servers, [1, k/2] for core switches
 		self.ip_address = f"{self.net}.{self.pod}.{self.switch}.{self.id}"
+		self.mac = None
+		self.dpid = dpid
+		self.ports: dict[int, int] = {}  # dpid: to port_no
+		self.next_hop: dict[str, Node] = {}  # dpid: Node
 
 
 	# Add an edge connected to another node
@@ -63,6 +68,7 @@ class Edge:
 class Fattree:
 
 	def __init__(self, num_ports):
+		self._next_dpid = 1
 		self.k = num_ports
 		self.switches = []			# core, aggregation and edge switches
 		self.servers = []			# servers, aka leaf nodes
@@ -70,6 +76,11 @@ class Fattree:
 		self.generate(num_ports)
 		self.sanity_check()
 
+
+	def next_dpid(self):
+		current_dpid = self._next_dpid
+		self._next_dpid += 1
+		return current_dpid
 
 	def generate(self, num_ports: int):
 		# "There are k[=num_ports] pods, each containing two layers of k/2 switches. 
@@ -94,7 +105,7 @@ class Fattree:
 		core_switches = []
 		for j in range(1, k_half + 1):
 			for i in range(1, k_half + 1):
-				core_switches.append(Node(pod=k, switch=j, id=i, type="core"))
+				core_switches.append(Node(pod=k, switch=j, id=i, type="core", dpid=self.next_dpid()))
 		self.switches += core_switches
 
 		# Iterate over pods to generate and connect the switches and servers in them
@@ -106,12 +117,12 @@ class Fattree:
 			for switch_id in range(k):
 				if switch_id < (k_half):
 					# add edge switch
-					edge_switch = Node(pod=pod_id, switch=switch_id, id=1, type="edge")
+					edge_switch = Node(pod=pod_id, switch=switch_id, id=1, type="edge", dpid=self.next_dpid())
 					
 					# add servers and connect them to edge switch
 					servers = []
 					for host_id in range(2, k_half + 2):
-						server = Node(pod=pod_id, switch=switch_id, id=host_id, type="serv")
+						server = Node(pod=pod_id, switch=switch_id, id=host_id, type="serv", dpid=self.next_dpid())
 						servers.append(server)
 						edge = edge_switch.add_edge(server)
 						self.edges.append(edge)
@@ -120,7 +131,7 @@ class Fattree:
 					self.servers += servers
 				else:
 					# add aggr switch
-					aggr_switch = Node(pod=pod_id, switch=switch_id, id=1, type="aggr")
+					aggr_switch = Node(pod=pod_id, switch=switch_id, id=1, type="aggr", dpid=self.next_dpid())
 
 					# connect to edge switches
 					for edge_switch in edge_switches:

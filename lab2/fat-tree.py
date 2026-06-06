@@ -202,7 +202,7 @@ class FattreeNet(Topo):
         # aggr (a) swichtes: "s<p>a<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [num_ports/2, num_ports - 1]
         # edge (e) switches: "s<p>e<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [0, num_ports/2 - 1]
         switches = ft_topo.switches
-        for i, switch in enumerate(switches, start=1):
+        for switch in switches:
             # ip addresses need to be assigned at runtime, hence the dict in this class
             match switch.type:
                 case "core":
@@ -215,14 +215,14 @@ class FattreeNet(Topo):
                     print("##########")
                     raise AssertionError(f"Unexpected switch.type: {switch.type}") 
             
-            self.addSwitch(name, ip=switch.ip_address, dpid=f"{i:016d}")
+            self.addSwitch(name, ip=switch.ip_address, dpid=f"{switch.dpid:016d}")
 
         # Adding Hosts
         # Host naming convention: "h<h>s<s>p<p>" where h is the host-id, p the pod-id and s the switch-id (ip: 10.p.s.h)
         servers = ft_topo.servers
         for server in servers:
             name = f"h{server.id}s{server.switch}p{server.pod}"
-            self.addHost(name, ip=server.ip_address)
+            self.addHost(name, ip=server.ip_address, dpid=server.dpid)
 
         # Adding Links
         edges = ft_topo.edges
