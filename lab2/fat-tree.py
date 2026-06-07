@@ -203,51 +203,22 @@ class FattreeNet(Topo):
         # edge (e) switches: "s<p>e<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [0, num_ports/2 - 1]
         switches = ft_topo.switches
         for switch in switches:
-            # ip addresses need to be assigned at runtime, hence the dict in this class
-            match switch.type:
-                case "core":
-                    name = f"s{switch.switch}c{switch.id}"
-                case "aggr":
-                    name = f"s{switch.pod}a{switch.switch}"
-                case "edge":
-                    name = f"s{switch.pod}e{switch.switch}"
-                case _:
-                    print("##########")
-                    raise AssertionError(f"Unexpected switch.type: {switch.type}") 
-            
-            self.addSwitch(name, ip=switch.ip_address, dpid=f"{switch.dpid:016d}")
+            dpid = f"{switch.dpid:016x}"
+            print(f"Switch: {(switch.name, switch.ip_address, switch.dpid)}")
+            self.addSwitch(switch.name, ip=switch.ip_address, dpid=dpid)
 
         # Adding Hosts
         # Host naming convention: "h<h>s<s>p<p>" where h is the host-id, p the pod-id and s the switch-id (ip: 10.p.s.h)
         servers = ft_topo.servers
         for server in servers:
-            name = f"h{server.id}s{server.switch}p{server.pod}"
-            self.addHost(name, ip=server.ip_address, dpid=server.dpid)
+            print(f"Host: {(server.name, server.ip_address, server.dpid)}")
+            self.addHost(server.name, ip=server.ip_address)
 
         # Adding Links
         edges = ft_topo.edges
         for edge in edges:
-            lnode = edge.lnode
-            rnode = edge.rnode
-
-            match rnode.type:
-                case "serv":
-                    assert lnode.type == "edge"
-                    lname = f"s{lnode.pod}e{lnode.switch}"
-                    rname = f"h{rnode.id}s{rnode.switch}p{rnode.pod}"
-                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
-                case "edge":
-                    assert lnode.type == "aggr"
-                    lname = f"s{lnode.pod}a{lnode.switch}"
-                    rname = f"s{rnode.pod}e{rnode.switch}"
-                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
-                case "aggr":
-                    assert lnode.type == "core"
-                    lname = f"s{lnode.switch}c{lnode.id}"
-                    rname = f"s{rnode.pod}a{rnode.switch}"
-                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
-                case _:
-                    raise AssertionError(f"Unexpected rnode.type: {rnode.type}")
+            print((edge.lnode.name, edge.rnode.name), (edge.lnode.dpid, edge.rnode.dpid), (edge.lnode.ip_address, edge.rnode.ip_address))
+            self.addLink(edge.lnode.name, edge.rnode.name , bw=15, delay="5ms", cls=TCLink)
 
 
 def make_mininet_instance(graph_topo):

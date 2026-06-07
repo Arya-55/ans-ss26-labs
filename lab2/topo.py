@@ -26,7 +26,7 @@ from typing import Literal
 class Node:
 	def __init__(self, *, pod, switch, id, type: Literal["core", "aggr", "edge", "serv"], dpid):
 		self.neighbors: list[Node] = []
-		self.type = type				# core | aggregation | edge | server
+		self.type: Literal["core", "aggr", "edge", "serv"] = type				# core | aggregation | edge | server
 		self.net = 10
 		self.pod = pod					# k if core switch, pod_identifier for everything else
 		self.switch = switch			# [1, k/2] for core switches, [1, k] for pod switches
@@ -35,7 +35,21 @@ class Node:
 		self.mac = None
 		self.dpid = dpid
 		self.ports: dict[int, int] = {}  # dpid: to port_no
+		self.unexplored_ports = set()
 		self.next_hop: dict[str, Node] = {}  # dpid: Node
+
+		match self.type:
+			case "core":
+				self.name = f"s{self.switch}c{self.id}"
+			case "aggr":
+				self.name = f"s{self.pod}a{self.switch}"
+			case "edge":
+				self.name = f"s{self.pod}e{self.switch}"
+			case "serv":
+				self.name = f"h{self.id}s{self.switch}p{self.pod}"
+			case _:
+				print("##########")
+				raise AssertionError(f"Unexpected switch.type: {switch.type}")
 
 
 	# Add an edge connected to another node

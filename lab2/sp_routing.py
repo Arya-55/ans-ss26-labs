@@ -63,6 +63,7 @@ class SPRouter(app_manager.RyuApp):
 
         # Initialize the topology with #ports=4
         self.topo_net = topo.Fattree(4)
+        self.paths = []  # only for debug logs
         self.setup_paths()
 
         handler = logging.StreamHandler()
@@ -79,11 +80,16 @@ class SPRouter(app_manager.RyuApp):
             for target_node in self.topo_net.servers:
                 if start_node.dpid != target_node.dpid:
                     path = self.shortest_path(target_node, predecessors)
-                    self.logger.debug(f"Found path: {[hop.ip_address for hop in path]}")
+                    self.paths.append([hop.dpid for hop in path])
+                    self.logger.debug(f"Found path: {[hop.dpid for hop in path]}")
+                    self.logger.debug(f"            {[hop.ip_address for hop in path]}")
+                    self.logger.debug(f"            {[hop.name for hop in path]}")
+
 
     @staticmethod
     def shortest_path(target_node: topo.Node, predecessors: dict[int, topo.Node]) -> list[topo.Node]:
         # https://de.wikipedia.org/wiki/Dijkstra-Algorithmus
+        predecessors[target_node.dpid].next_hop[target_node.dpid] = target_node
         path = [target_node]
         current_hop = target_node
         while predecessors[current_hop.dpid]:
@@ -110,21 +116,45 @@ class SPRouter(app_manager.RyuApp):
                         predecessors[neighbor.dpid] = current_hop
         return predecessors
 
-    # Topology discovery
-    @set_ev_cls(event.EventSwitchEnter)
-    def get_topology_data(self, ev):
+    def update_links(self):
         # Switches and links in the network
         switches = get_switch(self, None)
         links = get_link(self, None)
 
-        self.logger.debug(f"num_links={len(links)}")
-        self.logger.debug(f"num_nodes={len(self.topo_net.servers) + len(self.topo_net.switches)}")
         for link in links:
             for node in self.topo_net.servers + self.topo_net.switches:
                 if link.src.dpid == node.dpid:
-                    node.ports[link.dst.dpid] = link.dst.port_no
+                    node.ports[link.dst.dpid] = link.src.port_no  # (5, 6) == (src, dst) --> src.ports[dst] = src.port_no
+                    node.unexplored_ports.discard(link.src.port_no)
                 elif link.dst.dpid == node.dpid:
-                    node.ports[link.src.dpid] = link.src.port_no
+                    node.ports[link.src.dpid] = link.dst.port_no
+                    node.unexplored_ports.discard(link.dst.port_no)
+                if node.dpid in (link.src.dpid, link.dst.dpid):
+                    #print(f"AFTER: node.neighbors: {[n.dpid for n in node.neighbors]}")
+                    #print(f"AFTER: (node={(node.dpid, node.ip_address, node.name)}, link={(link.src.dpid, link.dst.dpid)}, "
+                    #      f"port_no={(link.src.port_no, link.dst.port_no)}), ports={node.ports}")
+                    #breakpoint()
+                    pass
+        for switch in switches:
+            node = [node for node in self.topo_net.switches if node.dpid == switch.dp.id]
+            if not node:
+                self.logger.error(f"openflow switch not found in model: dpid={switch.dp.id}")
+                continue
+            else:
+                node: topo.Node = node[0]
+
+            for port in switch.ports:
+                if port.port_no not in node.ports.values():
+                    if node.type == "edge" or not any((node.dpid in path for path in self.paths)):
+                        node.unexplored_ports.add(port.port_no)
+                    else:
+                        self.logger.warning(f"non edge switch={(node.dpid, node.ip_address, node.name)} with paths has unexplored port={port}")
+
+
+    # Topology discovery
+    @set_ev_cls(event.EventSwitchEnter)
+    def get_topology_data(self, ev):
+        self.update_links()
 
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -191,55 +221,85 @@ class SPRouter(app_manager.RyuApp):
             for tlv in lldp_packet.tlvs:
                 self.logger.debug(f"lv={tlv}")
             self.logger.debug("LLDP Stop")"""
+            self.update_links()
             return
         else:
+            num_minus = 20
+            self.logger.debug(num_minus*"-")
             print_packet(self.logger.debug, pkt, dpid)
         if arp_packet:
             current_node = [node for node in self.topo_net.switches if node.dpid == dpid]
             if current_node:
                 current_node: topo.Node = current_node[0]
-                current_node.mac = arp_packet.src_mac
+                if current_node.type == "edge":
+                    src_node = [node for node in self.topo_net.servers if node.ip_address == arp_packet.src_ip]
+                    if src_node:
+                        src_node: topo.Node = src_node[0]
+                        src_node.mac = arp_packet.src_mac
+                        # breakpoint()
+                        if src_node.dpid == current_node.next_hop[src_node.dpid].dpid:
+                            # if src is directly connected to this edge switch
+                            current_node.ports[src_node.dpid] = in_port
+                            current_node.unexplored_ports.discard(in_port)
+                    else:
+                        self.logger.warning(f"could not find src_node for IP {arp_packet.src_ip}")
             else:
-                self.logger.critical(f"got invalid source IP {arp_packet.src_ip} from dpid={dpid}")
+                self.logger.error(f"got invalid source IP {arp_packet.src_ip} from dpid={dpid}")
                 return
             target_node = [node for node in self.topo_net.servers if node.ip_address == arp_packet.dst_ip]
             if target_node:
                 target_node: topo.Node = target_node[0]
                 target_node.mac = arp_packet.dst_mac
             else:
-                self.logger.critical(f"got invalid destination IP {arp_packet.dst_ip} from dpid={dpid}")
+                self.logger.error(f"got invalid destination IP {arp_packet.dst_ip} from dpid={dpid}")
                 return
 
             next_hop = current_node.next_hop.get(target_node.dpid)
             if next_hop:
-                breakpoint()
-                out_port = current_node.ports[next_hop.dpid]
+                # breakpoint()
+                if next_hop.dpid in current_node.ports:
+                    out_port = current_node.ports[next_hop.dpid]
+                    outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
+                    self.logger.info(f"dpid={current_node.dpid}: sending arp packet out on port={out_port}")
+                else:
+                    for out_port in current_node.unexplored_ports:
+                        outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
+                    self.logger.warning(f"next port unknown - send to unexplored_ports={current_node.unexplored_ports}")
             else:
-                self.logger.error(f"dpid{dpid}: next hop for dpid={target_node.dpid}, ip={target_node.ip_address} not found")
+                self.logger.error(f"dpid={dpid}: next hop for dpid={target_node.dpid}, ip={target_node.ip_address} not found")
+                return
         else:
-            current_node = [node for node in self.topo_net.servers if node.dpid == datapath.id]
+            current_node = [node for node in self.topo_net.switches if node.dpid == datapath.id]
             if current_node:
                 current_node: topo.Node = current_node[0]
             else:
-                self.logger.critical(f"unknown src mac {eth_frame.src} from dpid={dpid}")
+                self.logger.error(f"unknown switch - dpid={dpid}")
                 return
             target_node = [node for node in self.topo_net.servers if node.mac == eth_frame.dst]
             if target_node:
                 target_node: topo.Node = target_node[0]
             else:
-                self.logger.critical(f"unknown dst mac {eth_frame.src} from dpid={dpid}")
+                self.logger.error(f"unknown dst mac {eth_frame.dst} from dpid={dpid}")
                 return
-            match = parser.OFPMatch(in_port=in_port, eth_dst=target_node.mac)
+
             next_hop = current_node.next_hop.get(target_node.dpid)
             if next_hop:
-                out_port = current_node.ports[next_hop.dpid]
-            else:
-                self.logger.error(f"dpid{dpid}: next hop for dpid={target_node.dpid}, ip={target_node.ip_address} not found")
-                return
-            actions = [parser.OFPActionOutput(out_port)]
-            self.add_flow(datapath=datapath, priority=PRIO_FORWARD, match=match, actions=actions)
+                if next_hop.dpid in current_node.ports:
+                    out_port = current_node.ports[next_hop.dpid]
+                    outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
+                    self.logger.info(f"dpid={current_node.dpid}: sending ethernet frame out on port={out_port}")
 
-        outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
+                    match = parser.OFPMatch(in_port=in_port, eth_dst=target_node.mac)
+                    actions = [parser.OFPActionOutput(out_port)]
+                    self.add_flow(datapath=datapath, priority=PRIO_FORWARD, match=match, actions=actions)
+                    self.logger.info(f"dpid={dpid}: added rule: match={match}, actions={actions}")
+                else:
+                    for out_port in current_node.unexplored_ports:
+                        outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
+                    self.logger.warning(f"next port unknown - send to unexplored_ports={current_node.unexplored_ports}")
+            else:
+                self.logger.error(f"dpid={dpid}: next hop for dpid={target_node.dpid}, ip={target_node.ip_address} not found")
+                return
 
         for out in outs:
             self.logger.debug(f"result={datapath.send_msg(out)}")
