@@ -187,7 +187,7 @@ class SPRouter(app_manager.RyuApp):
         else:
             num_minus = 20
             self.logger.debug(num_minus*"-")
-            common.print_packet(self.logger.debug, pkt, dpid, self.topo_net)
+            common.print_packet(self.logger.debug, pkt, dpid, in_port, self.topo_net)
         if arp_packet:
             current_node = [node for node in self.topo_net.switches if node.dpid == dpid]
             if current_node:

@@ -26,8 +26,8 @@ import topo
 
 #!/usr/bin/env python3
 
-def print_packet(logger_print_function, packet, dpid, topo_net: topo.Fattree):
-    s = f"Packet on dpid={dpid}"
+def print_packet(logger_print_function, packet, dpid, in_port, topo_net: topo.Fattree):
+    s = f"Packet on in_port={in_port} dpid={dpid}"
     node = [node for node in topo_net.switches if node.dpid == dpid]
     if node:
         node: topo.Node = node[0]
@@ -54,6 +54,15 @@ def update_links(ryu_app, topo_net: topo.Fattree, paths: list, logger):
                 #print(f"AFTER: (node={(node.dpid, node.ip_address, node.name)}, link={(link.src.dpid, link.dst.dpid)}, "
                 #      f"port_no={(link.src.port_no, link.dst.port_no)}), ports={node.ports}")
                 #breakpoint()
+                pass
+
+            #print(f"##################\n")
+            if node.name in ["s1c1", "s1c2","s2c1","s2c2"]:
+                #print(f"###############")
+                for neigh in node.neighbors:
+                    if neigh.dpid in node.ports:
+                        portnum = node.ports[neigh.dpid]
+                        #print(f"to {neigh.name}: port {portnum}")
                 pass
     for switch in switches:
         node = [node for node in topo_net.switches if node.dpid == switch.dp.id]
