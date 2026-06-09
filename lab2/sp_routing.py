@@ -42,16 +42,11 @@ from ryu.app.wsgi import ControllerBase
 
 import logging
 import topo
+import common
 
 
 PRIO_DROP = 2
 PRIO_FORWARD = 1
-
-
-def print_packet(logger_print_function, packet, dpid):
-    logger_print_function(f"Packet on dpid={dpid}:")
-    for p in packet.protocols:
-        logger_print_function(f" - {p}")
 
 
 class SPRouter(app_manager.RyuApp):
@@ -62,7 +57,7 @@ class SPRouter(app_manager.RyuApp):
         super(SPRouter, self).__init__(*args, **kwargs)
 
         # Initialize the topology with #ports=4
-        self.topo_net = topo.Fattree(4)
+        self.topo_net = topo.Fattree(4, do_sanity_check = False)
         self.paths = []  # only for debug logs
         self.setup_paths()
 
@@ -116,45 +111,11 @@ class SPRouter(app_manager.RyuApp):
                         predecessors[neighbor.dpid] = current_hop
         return predecessors
 
-    def update_links(self):
-        # Switches and links in the network
-        switches = get_switch(self, None)
-        links = get_link(self, None)
-
-        for link in links:
-            for node in self.topo_net.servers + self.topo_net.switches:
-                if link.src.dpid == node.dpid:
-                    node.ports[link.dst.dpid] = link.src.port_no  # (5, 6) == (src, dst) --> src.ports[dst] = src.port_no
-                    node.unexplored_ports.discard(link.src.port_no)
-                elif link.dst.dpid == node.dpid:
-                    node.ports[link.src.dpid] = link.dst.port_no
-                    node.unexplored_ports.discard(link.dst.port_no)
-                if node.dpid in (link.src.dpid, link.dst.dpid):
-                    #print(f"AFTER: node.neighbors: {[n.dpid for n in node.neighbors]}")
-                    #print(f"AFTER: (node={(node.dpid, node.ip_address, node.name)}, link={(link.src.dpid, link.dst.dpid)}, "
-                    #      f"port_no={(link.src.port_no, link.dst.port_no)}), ports={node.ports}")
-                    #breakpoint()
-                    pass
-        for switch in switches:
-            node = [node for node in self.topo_net.switches if node.dpid == switch.dp.id]
-            if not node:
-                self.logger.error(f"openflow switch not found in model: dpid={switch.dp.id}")
-                continue
-            else:
-                node: topo.Node = node[0]
-
-            for port in switch.ports:
-                if port.port_no not in node.ports.values():
-                    if node.type == "edge" or not any((node.dpid in path for path in self.paths)):
-                        node.unexplored_ports.add(port.port_no)
-                    else:
-                        self.logger.warning(f"non edge switch={(node.dpid, node.ip_address, node.name)} with paths has unexplored port={port}")
-
 
     # Topology discovery
     @set_ev_cls(event.EventSwitchEnter)
     def get_topology_data(self, ev):
-        self.update_links()
+        common.update_links(self, self.topo_net, self.paths, self.logger)
 
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -221,12 +182,12 @@ class SPRouter(app_manager.RyuApp):
             for tlv in lldp_packet.tlvs:
                 self.logger.debug(f"lv={tlv}")
             self.logger.debug("LLDP Stop")"""
-            self.update_links()
+            common.update_links(self, self.topo_net, self.paths, self.logger)
             return
         else:
             num_minus = 20
             self.logger.debug(num_minus*"-")
-            print_packet(self.logger.debug, pkt, dpid)
+            common.print_packet(self.logger.debug, pkt, dpid, self.topo_net)
         if arp_packet:
             current_node = [node for node in self.topo_net.switches if node.dpid == dpid]
             if current_node:

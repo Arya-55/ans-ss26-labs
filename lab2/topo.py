@@ -81,14 +81,14 @@ class Edge:
 
 class Fattree:
 
-	def __init__(self, num_ports):
+	def __init__(self, num_ports, do_sanity_check = True):
 		self._next_dpid = 1
 		self.k = num_ports
 		self.switches = []			# core, aggregation and edge switches
 		self.servers = []			# servers, aka leaf nodes
 		self.edges = []				# save edges here instead of in the nodes
 		self.generate(num_ports)
-		self.sanity_check()
+		if do_sanity_check: self.sanity_check()
 
 
 	def next_dpid(self):
