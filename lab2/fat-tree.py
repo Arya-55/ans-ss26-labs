@@ -146,7 +146,7 @@ def _generate_net_graph(net, k):
                 pos[name] = [coordinates[0] * k/2, coordinates[1]]
     pos = _sort_node_positions(pos)
 
-    # this value is carefully tried and errored to make the graph look nice for ":D
+    # this value is carefully tried and errored to make the graph look nice ":D
     fig_width = int((np.round(np.sqrt(300/np.pi))) + 50 / 72 * len(net.hosts))   # diameter of graph node with padding / 72 ppi * number of hosts
     fig = plt.figure(figsize=(fig_width, 10))
     ax = plt.gca()
@@ -169,8 +169,22 @@ def _generate_net_graph(net, k):
         node_color = "lightskyblue", 
         node_size=1400
     )
+    # draw edges between nodes
     nx.draw_networkx_edges(graph, pos, width=1)
+    # draw node names
     nx.draw_networkx_labels(graph, pos, font_size=9, font_weight="bold")
+
+    # build positions and labels for ip addresses
+    ip_pos = pos.copy()
+    for key in ip_pos:
+        ip_pos[key][1] = ip_pos[key][1] - 0.03 * k
+
+    ip_labels = {}
+    for key, value in graph.nodes(data=True):
+        ip_labels[key] = value["ip"]
+
+    # draw ip labels
+    nx.draw_networkx_labels(graph, ip_pos, labels=ip_labels, font_size=7)
 
     # draw rectangles for pods:
     width = pos[f"s0e{int(k/2)-1}"][0] - pos["s0e0"][0]
@@ -180,7 +194,7 @@ def _generate_net_graph(net, k):
         xmargin = 0.15 * k
         ymargin = 0.1 * k 
         rect = Rectangle(
-            (x - xmargin, y - ymargin), 
+            (x - xmargin, y - ymargin/1.5), 
             width = abs(width) + 2*xmargin, 
             height = abs(height) + 2*ymargin,
             edgecolor="red",
