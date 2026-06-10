@@ -151,16 +151,26 @@ def _generate_net_graph(net, k):
     fig = plt.figure(figsize=(fig_width, 10))
     ax = plt.gca()
     
-    # draw graph
+    # draw hosts
     nx.draw_networkx_nodes(
         graph, 
         pos,
-        nodelist=graph.nodes,
+        nodelist=[h.name for h in net.hosts],
         node_shape='o',
-        node_size=1300
+        node_color = "navajowhite", 
+        node_size=1400
+    )
+    # draw switches
+    nx.draw_networkx_nodes(
+        graph, 
+        pos,
+        nodelist=[s.name for s in net.switches],
+        node_shape='o',
+        node_color = "lightskyblue", 
+        node_size=1400
     )
     nx.draw_networkx_edges(graph, pos, width=1)
-    nx.draw_networkx_labels(graph, pos, font_size=9)
+    nx.draw_networkx_labels(graph, pos, font_size=9, font_weight="bold")
 
     # draw rectangles for pods:
     width = pos[f"s0e{int(k/2)-1}"][0] - pos["s0e0"][0]
