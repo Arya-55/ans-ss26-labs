@@ -44,16 +44,16 @@ import numpy as np
 
 import topo
 
-def _lt(ident1:str, ident2:str):
+def _lt(ident1:str, ident2:str, node1:topo.Node, node2:topo.Node):
     numbers1 = []
     numbers2 = []
     
     if ident1 == ident2:
         return False
     else:
-        if ident1.startswith("h"):
+        if node1.type == "serv":
             # host
-            if not ident2.startswith("h"):
+            if not node2.type == "serv":
                 # compared to switch
                 return False
             else:
@@ -114,15 +114,16 @@ def _sort_node_positions(pos):
     return sorted_pos
 
 
-def _generate_net_graph(net, k):
+def _generate_net_graph(net, graph_topo, k):
     graph = nx.Graph()
 
     for s in net.switches:
-        if "c" in s.name:
+        node = [n for n in graph_topo.switches + graph_topo.servers if n.name == s.name][0]
+        if node.type == "core":
             layer = 3
-        if "a" in s.name:
+        if node.type == "aggr":
             layer = 2
-        if "e" in s.name:
+        if node.type == "edge":
             layer = 1
 
         graph.add_node(s.name, type = "switch", ip = s.params.get("ip"))
@@ -139,8 +140,9 @@ def _generate_net_graph(net, k):
 
     pos = nx.multipartite_layout(graph, subset_key="layer", align="horizontal", scale=len(net.hosts))
     for name, coordinates in pos.items():
-        if name.startswith("s"):
-            if "c" in name:
+        node = [n for n in graph_topo.switches + graph_topo.servers if n.name == name][0]
+        if node.type != "serv":
+            if node.type == "core":
                 pos[name] = [coordinates[0] * k/2, coordinates[1] * 1.5]
             else:
                 pos[name] = [coordinates[0] * k/2, coordinates[1]]
