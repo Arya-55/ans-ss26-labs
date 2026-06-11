@@ -203,9 +203,7 @@ class FattreeNet(Topo):
         # edge (e) switches: "s<p>e<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [0, num_ports/2 - 1]
         switches = ft_topo.switches
         for switch in switches:
-            dpid = f"{switch.dpid:016x}"
-            print(f"Switch: {(switch.name, switch.ip_address, switch.dpid)}")
-            self.addSwitch(switch.name, ip=switch.ip_address, dpid=dpid)
+            self.addSwitch(switch.name)
 
         # Adding Hosts
         # Host naming convention: "h<h>s<s>p<p>" where h is the host-id, p the pod-id and s the switch-id (ip: 10.p.s.h)
@@ -234,7 +232,7 @@ def run(graph_topo):
     lg.setLogLevel('info')
     # mininet.clean.cleanup()
     net = make_mininet_instance(graph_topo)
-    _generate_net_graph(net, k=graph_topo.k)
+    # _generate_net_graph(net, graph_topo=graph_topo, k=graph_topo.k)
 
     for host in net.hosts:  # reduce log noise
         host.cmd("sysctl -w net.ipv6.conf.all.disable_ipv6=1")

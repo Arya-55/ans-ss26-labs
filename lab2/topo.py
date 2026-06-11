@@ -38,17 +38,10 @@ class Node:
 		self.unexplored_ports = set()
 		self.next_hop: dict[str, Node] = {}  # dpid: Node
 
-		if self.type == "core":
-			self.name = f"s{self.switch}c{self.id}"
-		elif self.type == "aggr":
-			self.name = f"s{self.pod}a{self.switch}"
-		elif self.type == "edge":
-			self.name = f"s{self.pod}e{self.switch}"
-		elif self.type == "serv":
-			self.name = f"h{self.id}s{self.switch}p{self.pod}"
+		if self.type == "serv":
+			self.name = f"h{dpid}"
 		else:
-			print("##########")
-			raise AssertionError(f"Unexpected switch.type: {switch.type}")
+			self.name = f"s{dpid}"
 
 
 	# Add an edge connected to another node
@@ -82,6 +75,7 @@ class Fattree:
 
 	def __init__(self, num_ports, do_sanity_check = True):
 		self._next_dpid = 1
+		self._next_host_dpid = 21
 		self.k = num_ports
 		self.switches = []			# core, aggregation and edge switches
 		self.servers = []			# servers, aka leaf nodes
@@ -94,6 +88,11 @@ class Fattree:
 		current_dpid = self._next_dpid
 		self._next_dpid += 1
 		return current_dpid
+
+	def next_host_dpid(self):
+		current_host_dpid = self._next_host_dpid
+		self._next_host_dpid += 1
+		return current_host_dpid
 
 	def generate(self, num_ports: int):
 		# "There are k[=num_ports] pods, each containing two layers of k/2 switches. 
@@ -135,7 +134,7 @@ class Fattree:
 					# add servers and connect them to edge switch
 					servers = []
 					for host_id in range(2, k_half + 2):
-						server = Node(pod=pod_id, switch=switch_id, id=host_id, type="serv", dpid=self.next_dpid())
+						server = Node(pod=pod_id, switch=switch_id, id=host_id, type="serv", dpid=self.next_host_dpid())
 						servers.append(server)
 						edge = edge_switch.add_edge(server)
 						self.edges.append(edge)
