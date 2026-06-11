@@ -22,7 +22,6 @@
 #!/usr/bin/env python3
 
 from collections import defaultdict
-from lib2to3.fixes.fix_renames import alternates
 from math import inf
 
 from ryu.base import app_manager
