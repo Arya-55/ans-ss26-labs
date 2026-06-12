@@ -199,8 +199,7 @@ class SPRouter(app_manager.RyuApp):
                         # breakpoint()
                         if src_node.dpid == current_node.next_hop[src_node.dpid].dpid:
                             # if src is directly connected to this edge switch
-                            current_node.ports[src_node.dpid] = in_port
-                            current_node.unexplored_ports.discard(in_port)
+                            common.discover_link(current_node, src_node.dpid, in_port)
                     else:
                         self.logger.warning(f"could not find src_node for IP {arp_packet.src_ip}")
             else:

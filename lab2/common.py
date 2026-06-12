@@ -36,6 +36,10 @@ def print_packet(logger_print_function, packet, dpid, in_port, topo_net: topo.Fa
     for p in packet.protocols:
         logger_print_function(f" - {p}")
 
+def discover_link(node: topo.Node, link_dpid, link_port_no):
+    node.ports[link_dpid] = link_port_no  # (5, 6) == (src, dst) --> src.ports[dst] = src.port_no
+    node.unexplored_ports.discard(link_port_no)
+
 def update_links(ryu_app, topo_net: topo.Fattree, paths: list, logger):
     # Switches and links in the network
     switches = get_switch(ryu_app, None)
@@ -44,33 +48,21 @@ def update_links(ryu_app, topo_net: topo.Fattree, paths: list, logger):
     for link in links:
         for node in topo_net.servers + topo_net.switches:
             if link.src.dpid == node.dpid:
-                node.ports[link.dst.dpid] = link.src.port_no  # (5, 6) == (src, dst) --> src.ports[dst] = src.port_no
-                node.unexplored_ports.discard(link.src.port_no)
+                discover_link(node, link.dst.dpid, link.src.port_no)
             elif link.dst.dpid == node.dpid:
-                node.ports[link.src.dpid] = link.dst.port_no
-                node.unexplored_ports.discard(link.dst.port_no)
+                discover_link(node, link.src.dpid, link.dst.port_no)
             if node.dpid in (link.src.dpid, link.dst.dpid):
                 #print(f"AFTER: node.neighbors: {[n.dpid for n in node.neighbors]}")
                 #print(f"AFTER: (node={(node.dpid, node.ip_address, node.name)}, link={(link.src.dpid, link.dst.dpid)}, "
                 #      f"port_no={(link.src.port_no, link.dst.port_no)}), ports={node.ports}")
                 #breakpoint()
                 pass
-
-            #print(f"##################\n")
-            if node.name in ["s1c1", "s1c2","s2c1","s2c2"]:
-                #print(f"###############")
-                for neigh in node.neighbors:
-                    if neigh.dpid in node.ports:
-                        portnum = node.ports[neigh.dpid]
-                        #print(f"to {neigh.name}: port {portnum}")
-                pass
     for switch in switches:
         node = [node for node in topo_net.switches if node.dpid == switch.dp.id]
         if not node:
             logger.error(f"openflow switch not found in model: dpid={switch.dp.id}")
             continue
-        else:
-            node: topo.Node = node[0]
+        node: topo.Node = node[0]
 
         for port in switch.ports:
             if port.port_no not in node.ports.values():
