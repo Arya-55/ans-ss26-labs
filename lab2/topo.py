@@ -70,8 +70,6 @@ class Edge:
 class Fattree:
 
 	def __init__(self, num_ports, do_sanity_check=True):
-		self._next_dpid = 1
-		self._next_host_dpid = 21
 		self.k = num_ports
 		self.switches = []			# core, aggregation and edge switches
 		self.servers = []			# servers, aka leaf nodes
@@ -79,18 +77,6 @@ class Fattree:
 		self.generate(num_ports)
 		if do_sanity_check: self.sanity_check()
 
-
-	def next_dpid(self):
-		current_dpid = self._next_dpid
-		self._next_dpid += 1
-		return current_dpid
-
-
-	def next_host_dpid(self):
-		current_host_dpid = self._next_host_dpid
-		self._next_host_dpid += 1
-		return current_host_dpid
-	
 
 	def generate(self, num_ports: int):
 		# "There are k[=num_ports] pods, each containing two layers of k/2 switches. 
