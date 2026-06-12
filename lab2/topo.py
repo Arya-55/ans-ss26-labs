@@ -27,12 +27,17 @@ class Node:
 	def __init__(self, *, name,  pod, switch, id, type: Literal["core", "aggr", "edge", "serv"]):
 		self.neighbors = []
 		self.name = name
-		self.type = type				# core | aggregation | edge | server
+		self.type = type						# core | aggregation | edge | server
 		self.net = 10
-		self.pod = pod					# k if core switch, pod_identifier for everything else
-		self.switch = switch			# [1, k/2] for core switches, [1, k] for pod switches
-		self.id = id					# 1 for all switches in one pod, [2, k/2+1] for servers, [1, k/2] for core switches
+		self.pod = pod							# k if core switch, pod_identifier for everything else
+		self.switch = switch					# [1, k/2] for core switches, [1, k] for pod switches
+		self.id = id							# 1 for all switches in one pod, [2, k/2+1] for servers, [1, k/2] for core switches
 		self.ip_address = f"{self.net}.{self.pod}.{self.switch}.{self.id}"
+		self.mac = None
+		self.dpid = int(name[1:])
+		self.ports: dict[int, int] = {}  		# dpid: to port_no
+		self.unexplored_ports = set()
+		self.next_hop: dict[str, Node] = {}  	# dpid: Node
 
 
 	# Add an edge connected to another node
@@ -64,14 +69,28 @@ class Edge:
 
 class Fattree:
 
-	def __init__(self, num_ports):
+	def __init__(self, num_ports, do_sanity_check=True):
+		self._next_dpid = 1
+		self._next_host_dpid = 21
 		self.k = num_ports
 		self.switches = []			# core, aggregation and edge switches
 		self.servers = []			# servers, aka leaf nodes
 		self.edges = []				# save edges here instead of in the nodes
 		self.generate(num_ports)
-		self.sanity_check()
+		if do_sanity_check: self.sanity_check()
 
+
+	def next_dpid(self):
+		current_dpid = self._next_dpid
+		self._next_dpid += 1
+		return current_dpid
+
+
+	def next_host_dpid(self):
+		current_host_dpid = self._next_host_dpid
+		self._next_host_dpid += 1
+		return current_host_dpid
+	
 
 	def generate(self, num_ports: int):
 		# "There are k[=num_ports] pods, each containing two layers of k/2 switches. 
