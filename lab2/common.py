@@ -40,6 +40,24 @@ def discover_link(node: topo.Node, link_dpid, link_port_no):
     node.ports[link_dpid] = link_port_no  # (5, 6) == (src, dst) --> src.ports[dst] = src.port_no
     node.unexplored_ports.discard(link_port_no)
 
+def packet_out_to_port(*, data, datapath, in_port, port):
+    ofproto = datapath.ofproto
+    parser = datapath.ofproto_parser
+    return parser.OFPPacketOut(datapath=datapath,
+                                in_port=in_port,
+                                buffer_id=ofproto.OFP_NO_BUFFER,
+                                actions=[parser.OFPActionOutput(port)],
+                                data=data)
+
+def packet_out_to_ports(*, data, datapath, in_port, ports):
+    ofproto = datapath.ofproto
+    parser = datapath.ofproto_parser
+    return parser.OFPPacketOut(datapath=datapath,
+                                in_port=in_port,
+                                buffer_id=ofproto.OFP_NO_BUFFER,
+                                actions=[parser.OFPActionOutput(p) for p in ports],
+                                data=data)
+
 def update_links(ryu_app, topo_net: topo.Fattree, paths: list, logger):
     # Switches and links in the network
     switches = get_switch(ryu_app, None)

@@ -66,6 +66,8 @@ class SPRouter(app_manager.RyuApp):
         self.logger.addHandler(handler)
         self.logger.setLevel(logging.DEBUG)
         self.logger.propagate = False
+        
+        self.logger.debug("BEWARE: Lots of debug messages when host arp caches are empty")
 
 
     def setup_paths(self):
@@ -253,12 +255,13 @@ class SPRouter(app_manager.RyuApp):
                     self.add_flow(datapath=datapath, priority=PRIO_FORWARD, match=match, actions=actions)
                     self.logger.info(f"dpid={dpid}: added rule: match={match}, actions={actions}")
                 else:
-                    for out_port in current_node.unexplored_ports:
-                        outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
-                    self.logger.warning(f"next port unknown - send to unexplored_ports={current_node.unexplored_ports}")
+                    unexplored_ports = current_node.unexplored_ports
+                    outs.append(common.packet_out_to_ports(data=msg.data, datapath=datapath, in_port=in_port,
+                                                            ports=unexplored_ports))
+                    self.logger.warning(f"next port unknown - send to unexplored_ports={unexplored_ports}")
             else:
                 self.logger.error(f"dpid={dpid}: next hop for dpid={target_node.dpid}, ip={target_node.ip_address} not found")
                 return
 
         for out in outs:
-            self.logger.debug(f"result={datapath.send_msg(out)}")
+            self.logger.debug(f"forwarding result={datapath.send_msg(out)}")

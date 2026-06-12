@@ -25,7 +25,7 @@ from typing import Literal
 class Node:
 
 	def __init__(self, *, name,  pod, switch, id, type: Literal["core", "aggr", "edge", "serv"]):
-		self.neighbors = []
+		self.neighbors: list[Node] = []
 		self.name = name
 		self.type = type						# core | aggregation | edge | server
 		self.net = 10
