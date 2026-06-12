@@ -45,8 +45,8 @@ import numpy as np
 import topo
 
 def _lt(ident1:str, ident2:str):
-    numbers1 = []
-    numbers2 = []
+    number1 = int(ident1[1:])
+    number2 = int(ident2[1:])
     
     if ident1 == ident2:
         return False
@@ -58,10 +58,7 @@ def _lt(ident1:str, ident2:str):
                 return False
             else:
                 # compared to another host
-                numbers1 = re.findall(r"\d", ident1)
-                numbers2 = re.findall(r"\d", ident2)
-                numbers1.reverse()
-                numbers2.reverse()
+                return number1 < number2
         else:
             # switch 
             if not ident2.startswith("s"):
@@ -69,42 +66,33 @@ def _lt(ident1:str, ident2:str):
                 return True
             else:
                 # compared to another switch
-                numbers1 = re.findall(r"\d", ident1)
-                numbers2 = re.findall(r"\d", ident2)
-    
-    for i in range(len(numbers1)):
-        if numbers1[i] == numbers2[i]:
-            continue
-        else:
-            return numbers1[i] < numbers2[i]
+                return number1 < number2
 
 
-def _sort_node_positions(pos):
+def _sort_node_layers(pos, graph):
     names = list(pos.keys())
     coordinates = list(pos.values())
-    
+
     for i in range(len(names)):
         for j in range(len(names) - i - 1):
             name1 = names[j]
             coordinates1 = coordinates[j]
-            letters1 = "".join(re.findall(r"[a-z]", name1))
 
             name2 = names[j + 1]
             coordinates2 = coordinates[j + 1]
-            letters2 = "".join(re.findall(r"[a-z]", name2))
 
             if _lt(name2, name1):
-                if letters1 == letters2:
-                    # comparison within layer: compare x - coordinates
-                    if coordinates2[1] < coordinates1[1]:
-                        # coordinates of names do fit order of names -> switch together with names
-                        coordinates[j], coordinates[j + 1] = coordinates[j + 1], coordinates[j]
-                else:
-                    # comparisons between layers -> always switch name and coordinates
+                if not graph.nodes[name1]["layer"] == graph.nodes[name2]["layer"]: 
+                    # do not sort between layers
+                    continue
+
+                #comparison within layer: compare x - coordinates
+                if coordinates2[1] < coordinates1[1]:
+                    # x - coordinates of names do fit order of names -> switch together with names
                     coordinates[j], coordinates[j + 1] = coordinates[j + 1], coordinates[j]
 
                 # switch names
-                names[j], names[j + 1] = names[j + 1], names[j]      
+                names[j], names[j + 1] = names[j + 1], names[j]
 
     # Built new pos dict
     sorted_pos = {}
@@ -114,16 +102,20 @@ def _sort_node_positions(pos):
     return sorted_pos
 
 
-def _generate_net_graph(net, k):
+def _generate_net_graph(net, graph_topo):
+    k = graph_topo.k
     graph = nx.Graph()
 
     for s in net.switches:
-        if "c" in s.name:
-            layer = 3
-        if "a" in s.name:
-            layer = 2
-        if "e" in s.name:
-            layer = 1
+        switch_type = [ts.type for ts in graph_topo.switches if ts.name == s.name][0]
+        
+        match switch_type:
+            case "core":
+                layer = 3
+            case "aggr":
+                layer = 2
+            case "edge":
+                layer = 1
 
         graph.add_node(s.name, type = "switch", ip = s.params.get("ip"))
         graph.nodes[s.name]["layer"] = layer
@@ -140,11 +132,12 @@ def _generate_net_graph(net, k):
     pos = nx.multipartite_layout(graph, subset_key="layer", align="horizontal", scale=len(net.hosts))
     for name, coordinates in pos.items():
         if name.startswith("s"):
-            if "c" in name:
+            switch_type = [ts.type for ts in graph_topo.switches if ts.name == name][0]
+            if switch_type == "core":
                 pos[name] = [coordinates[0] * k/2, coordinates[1] * 1.5]
             else:
                 pos[name] = [coordinates[0] * k/2, coordinates[1]]
-    pos = _sort_node_positions(pos)
+    pos = _sort_node_layers(pos, graph)
 
     # this value is carefully tried and errored to make the graph look nice ":D
     fig_width = int((np.round(np.sqrt(300/np.pi))) + 50 / 72 * len(net.hosts))   # diameter of graph node with padding / 72 ppi * number of hosts
@@ -187,10 +180,12 @@ def _generate_net_graph(net, k):
     nx.draw_networkx_labels(graph, ip_pos, labels=ip_labels, font_size=7)
 
     # draw rectangles for pods:
-    width = pos[f"s0e{int(k/2)-1}"][0] - pos["s0e0"][0]
-    height = pos[f"s0a{int(k/2)}"][1] - pos["s0e0"][1]
+    fst_edge = int(5*k*k/4 - k * k/2 + 1)                                   # number of all switches - k * k/2
+    fst_aggr = int((k/2)**2 + 1)                                            # number of core switches + 1
+    width = pos[f"s{fst_edge + int(k/2) - 1}"][0] - pos[f"s{fst_edge}"][0]  # distance between first edge switch and last edge switch in first pod
+    height = pos[f"s{fst_aggr}"][1] - pos[f"s{fst_edge}"][1]                # distance between first edge switch and first aggr switch in first pod
     for i in range(k):
-        x, y = pos[f"s{i}e0"]                       # switch position on upper left of pod
+        x, y = pos[f"s{fst_edge + int(i * k/2)}"]                           # switch position on bottom left of each pod
         xmargin = 0.15 * k
         ymargin = 0.1 * k 
         rect = Rectangle(
@@ -220,59 +215,20 @@ class FattreeNet(Topo):
 
         Topo.__init__(self)
         
-        # Adding Switches, Switch naming convention:
-        # The switch type identifier is between the two numbers because we would otherwise need another divider
-        # core (c) switches: "s<j>c<i>" where j and i are their position in the grid (ip: 10.num_ports.j.i)
-        # aggr (a) swichtes: "s<p>a<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [num_ports/2, num_ports - 1]
-        # edge (e) switches: "s<p>e<s>" where p is their pod-id and s is their own id (ip: 10.p.s.1)    => s in [0, num_ports/2 - 1]
+        # Adding Switches
         switches = ft_topo.switches
-        for switch in switches:
-            # ip addresses need to be assigned at runtime, hence the dict in this class
-            match switch.type:
-                case "core":
-                    name = f"s{switch.switch}c{switch.id}"
-                case "aggr":
-                    name = f"s{switch.pod}a{switch.switch}"
-                case "edge":
-                    name = f"s{switch.pod}e{switch.switch}"
-                case _:
-                    print("##########")
-                    raise AssertionError(f"Unexpected switch.type: {switch.type}") 
-            
-            self.addSwitch(name, ip=switch.ip_address)
+        for s in switches:
+            self.addSwitch(s.name, ip=s.ip_address)
 
         # Adding Hosts
-        # Host naming convention: "h<h>s<s>p<p>" where h is the host-id, p the pod-id and s the switch-id (ip: 10.p.s.h)
-        servers = ft_topo.servers
-        for server in servers:
-            name = f"h{server.id}s{server.switch}p{server.pod}"
-            self.addHost(name, ip=server.ip_address)
+        hosts = ft_topo.servers
+        for h in hosts:
+            self.addHost(h.name, ip=h.ip_address)
 
         # Adding Links
         edges = ft_topo.edges
         for edge in edges:
-            lnode = edge.lnode
-            rnode = edge.rnode
-
-            match rnode.type:
-                case "serv":
-                    assert lnode.type == "edge"
-                    lname = f"s{lnode.pod}e{lnode.switch}"
-                    rname = f"h{rnode.id}s{rnode.switch}p{rnode.pod}"
-                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
-                case "edge":
-                    assert lnode.type == "aggr"
-                    lname = f"s{lnode.pod}a{lnode.switch}"
-                    rname = f"s{rnode.pod}e{rnode.switch}"
-                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
-                case "aggr":
-                    assert lnode.type == "core"
-                    lname = f"s{lnode.switch}c{lnode.id}"
-                    rname = f"s{rnode.pod}a{rnode.switch}"
-                    self.addLink(lname, rname , bw=15, delay="5ms", cls=TCLink)
-                case _:
-                    raise AssertionError(f"Unexpected rnode.type: {rnode.type}")
-
+            self.addLink(edge.lnode.name, edge.rnode.name , bw=15, delay="5ms", cls=TCLink)
 
 def make_mininet_instance(graph_topo):
     net_topo = FattreeNet(graph_topo)
@@ -287,7 +243,7 @@ def run(graph_topo):
     lg.setLogLevel('info')
     # mininet.clean.cleanup()
     net = make_mininet_instance(graph_topo)
-    _generate_net_graph(net, k=graph_topo.k)
+    _generate_net_graph(net, graph_topo)
 
     info('*** Starting network ***\n')
     net.start()

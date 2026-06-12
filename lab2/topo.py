@@ -23,8 +23,10 @@ from typing import Literal
 
 # Class for a node in the graph
 class Node:
-	def __init__(self, *, pod, switch, id, type: Literal["core", "aggr", "edge", "serv"]):
+
+	def __init__(self, *, name,  pod, switch, id, type: Literal["core", "aggr", "edge", "serv"]):
 		self.neighbors = []
+		self.name = name
 		self.type = type				# core | aggregation | edge | server
 		self.net = 10
 		self.pod = pod					# k if core switch, pod_identifier for everything else
@@ -91,13 +93,18 @@ class Fattree:
 		print(f"Building a Fat-Tree with {k} ports ({int(k ** 3 / 4)} Servers, {k_half} Edge/Aggr Switches per Pod, {(k_half) ** 2} Core Switches)")
 
 		# create Core Switches
+		core_counter = 0
 		core_switches = []
 		for j in range(1, k_half + 1):
 			for i in range(1, k_half + 1):
-				core_switches.append(Node(pod=k, switch=j, id=i, type="core"))
+				core_counter += 1
+				core_switches.append(Node(name=f"s{core_counter}", pod=k, switch=j, id=i, type="core"))
 		self.switches += core_switches
 
 		# Iterate over pods to generate and connect the switches and servers in them
+		edge_counter = core_counter + int(k * k / 2)
+		aggr_counter = core_counter
+		serv_counter = core_counter + 2 * int(k * k / 2)
 		for pod_id in range(k):
 			edge_switches = []
 			aggr_switches = []
@@ -106,12 +113,14 @@ class Fattree:
 			for switch_id in range(k):
 				if switch_id < (k_half):
 					# add edge switch
-					edge_switch = Node(pod=pod_id, switch=switch_id, id=1, type="edge")
-					
+					edge_counter += 1
+					edge_switch = Node(name=f"s{edge_counter}", pod=pod_id, switch=switch_id, id=1, type="edge")
+
 					# add servers and connect them to edge switch
 					servers = []
 					for host_id in range(2, k_half + 2):
-						server = Node(pod=pod_id, switch=switch_id, id=host_id, type="serv")
+						serv_counter += 1
+						server = Node(name=f"h{serv_counter}", pod=pod_id, switch=switch_id, id=host_id, type="serv")
 						servers.append(server)
 						edge = edge_switch.add_edge(server)
 						self.edges.append(edge)
@@ -120,7 +129,8 @@ class Fattree:
 					self.servers += servers
 				else:
 					# add aggr switch
-					aggr_switch = Node(pod=pod_id, switch=switch_id, id=1, type="aggr")
+					aggr_counter += 1
+					aggr_switch = Node(name=f"s{aggr_counter}", pod=pod_id, switch=switch_id, id=1, type="aggr")
 
 					# connect to edge switches
 					for edge_switch in edge_switches:
@@ -143,7 +153,7 @@ class Fattree:
 						self.edges.append(edge)
 
 					aggr_switches.append(aggr_switch)
-			self.switches += edge_switches + aggr_switches  
+			self.switches += edge_switches + aggr_switches
 
 
 	def sanity_check(self):
