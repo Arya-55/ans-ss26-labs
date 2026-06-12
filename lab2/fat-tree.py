@@ -218,16 +218,19 @@ class FattreeNet(Topo):
         # Adding Switches
         switches = ft_topo.switches
         for s in switches:
+            # print(f"Switch: {(s.name, s.ip_address, s.dpid)}")
             self.addSwitch(s.name, ip=s.ip_address)
 
         # Adding Hosts
         hosts = ft_topo.servers
         for h in hosts:
+            # print(f"Host: {(h.name, h.ip_address, h.dpid)}")
             self.addHost(h.name, ip=h.ip_address)
 
         # Adding Links
         edges = ft_topo.edges
         for edge in edges:
+            # print((edge.lnode.name, edge.rnode.name), (edge.lnode.dpid, edge.rnode.dpid), (edge.lnode.ip_address, edge.rnode.ip_address))
             self.addLink(edge.lnode.name, edge.rnode.name , bw=15, delay="5ms", cls=TCLink)
 
 def make_mininet_instance(graph_topo):
@@ -244,6 +247,11 @@ def run(graph_topo):
     # mininet.clean.cleanup()
     net = make_mininet_instance(graph_topo)
     _generate_net_graph(net, graph_topo)
+
+    for host in net.hosts:  # reduce log noise
+        host.cmd("sysctl -w net.ipv6.conf.all.disable_ipv6=1")
+        host.cmd("sysctl -w net.ipv6.conf.default.disable_ipv6=1")
+        host.cmd("sysctl -w net.ipv6.conf.lo.disable_ipv6=1")
 
     info('*** Starting network ***\n')
     net.start()
