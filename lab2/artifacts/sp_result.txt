@@ -4,24 +4,24 @@
 Client connecting to 10.0.0.2, TCP port 5001
 TCP window size: 85.3 KByte (default)
 ------------------------------------------------------------
-[  1] local 10.3.1.2 port 45428 connected with 10.0.0.2 port 5001
+[  1] local 10.3.1.2 port 56830 connected with 10.0.0.2 port 5001
 [ ID] Interval       Transfer     Bandwidth
-[  1] 0.0000-28.9589 sec  41.1 MBytes  11.9 Mbits/sec
+[  1] 0.0000-27.5431 sec  37.9 MBytes  11.5 Mbits/sec
 === Exp 2 ===
 ------------------------------------------------------------
 Client connecting to 10.0.0.2, TCP port 5001
 TCP window size: 85.3 KByte (default)
 ------------------------------------------------------------
-[  1] local 10.3.1.2 port 58140 connected with 10.0.0.2 port 5001
+[  1] local 10.3.1.2 port 47728 connected with 10.0.0.2 port 5001
 [ ID] Interval       Transfer     Bandwidth
-[  1] 0.0000-27.8371 sec  20.0 MBytes  6.03 Mbits/sec
+[  1] 0.0000-27.9290 sec  21.6 MBytes  6.50 Mbits/sec
 ------------------------------------------------------------
 Client connecting to 10.0.0.3, TCP port 5001
 TCP window size: 85.3 KByte (default)
 ------------------------------------------------------------
-[  1] local 10.3.1.3 port 51542 connected with 10.0.0.3 port 5001
+[  1] local 10.3.1.3 port 35282 connected with 10.0.0.3 port 5001
 [ ID] Interval       Transfer     Bandwidth
-[  1] 0.0000-27.6470 sec  20.0 MBytes  6.07 Mbits/sec
+[  1] 0.0000-28.6973 sec  20.1 MBytes  5.88 Mbits/sec
 ===== UDP =====
 === Exp 1 ===
 ------------------------------------------------------------
@@ -29,38 +29,38 @@ Client connecting to 10.0.0.2, UDP port 5001
 Sending 1470 byte datagrams, IPG target: 747.68 us (kalman adjust)
 UDP buffer size:  208 KByte (default)
 ------------------------------------------------------------
-[  1] local 10.3.1.2 port 53915 connected with 10.0.0.2 port 5001
+[  1] local 10.3.1.2 port 48408 connected with 10.0.0.2 port 5001
 [ ID] Interval       Transfer     Bandwidth
-[  1] 0.0000-20.0294 sec  37.5 MBytes  15.7 Mbits/sec
-[  1] Sent 26754 datagrams
+[  1] 0.0000-20.0007 sec  37.5 MBytes  15.7 Mbits/sec
+[  1] Sent 26753 datagrams
 [  1] Server Report:
 [ ID] Interval       Transfer     Bandwidth        Jitter   Lost/Total Datagrams
-[  1] 0.0000-21.0688 sec  27.7 MBytes  11.0 Mbits/sec   2.747 ms 6999/26753 (26%)
-[  1] 0.0000-21.0688 sec  213 datagrams received out-of-order
+[  1] 0.0000-21.2054 sec  28.2 MBytes  11.1 Mbits/sec   1.550 ms 6652/26753 (25%)
+[  1] 0.0000-21.2054 sec  299 datagrams received out-of-order
 === Exp 2 ===
 ------------------------------------------------------------
 Client connecting to 10.0.0.2, UDP port 5001
 Sending 1470 byte datagrams, IPG target: 747.68 us (kalman adjust)
 UDP buffer size:  208 KByte (default)
 ------------------------------------------------------------
-[  1] local 10.3.1.2 port 52696 connected with 10.0.0.2 port 5001
+[  1] local 10.3.1.2 port 51570 connected with 10.0.0.2 port 5001
 [ ID] Interval       Transfer     Bandwidth
-[  1] 0.0000-20.0009 sec  37.5 MBytes  15.7 Mbits/sec
+[  1] 0.0000-20.0007 sec  37.5 MBytes  15.7 Mbits/sec
 [  1] Sent 26753 datagrams
 [  1] Server Report:
 [ ID] Interval       Transfer     Bandwidth        Jitter   Lost/Total Datagrams
-[  1] 0.0000-21.9504 sec  17.6 MBytes  6.72 Mbits/sec   0.902 ms 14208/26752 (53%)
-[  1] 0.0000-21.9504 sec  182 datagrams received out-of-order
+[  1] 0.0000-21.9396 sec  17.3 MBytes  6.60 Mbits/sec   1.039 ms 14440/26752 (54%)
+[  1] 0.0000-21.9396 sec  174 datagrams received out-of-order
 ------------------------------------------------------------
 Client connecting to 10.0.0.3, UDP port 5001
 Sending 1470 byte datagrams, IPG target: 747.68 us (kalman adjust)
 UDP buffer size:  208 KByte (default)
 ------------------------------------------------------------
-[  1] local 10.3.1.3 port 42004 connected with 10.0.0.3 port 5001
+[  1] local 10.3.1.3 port 47013 connected with 10.0.0.3 port 5001
 [ ID] Interval       Transfer     Bandwidth
-[  1] 0.0000-20.0010 sec  37.5 MBytes  15.7 Mbits/sec
-[  1] Sent 26753 datagrams
+[  1] 0.0000-20.0013 sec  37.5 MBytes  15.7 Mbits/sec
+[  1] Sent 26754 datagrams
 [  1] Server Report:
 [ ID] Interval       Transfer     Bandwidth        Jitter   Lost/Total Datagrams
-[  1] 0.0000-21.5202 sec  15.7 MBytes  6.13 Mbits/sec   1.394 ms 15530/26752 (58%)
-[  1] 0.0000-21.5202 sec  137 datagrams received out-of-order
+[  1] 0.0000-22.0669 sec  16.3 MBytes  6.19 Mbits/sec  14.241 ms 15189/26798 (57%)
+[  1] 0.0000-22.0669 sec  155 datagrams received out-of-order
