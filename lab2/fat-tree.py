@@ -203,7 +203,7 @@ def _generate_net_graph(net, graph_topo):
     xmax = max(np.array(list(pos.values()))[:,0]) + 1
     plt.xlim(xmin, xmax)
     ax.set_axis_off()
-    fig.savefig(f"topology_{k}-port.png", dpi=300, bbox_inches="tight")
+    fig.savefig(f"./artifacts/topology_{k}-port.png", dpi=300, bbox_inches="tight")
 
 
 class FattreeNet(Topo):
@@ -255,10 +255,11 @@ def run(graph_topo):
 
     info('*** Starting network ***\n')
     net.start()
-    net.pingAll()
 
     # Experiment for 4-port Switches
     if graph_topo.k == 4:
+        net.pingAll()
+
         # left most hosts
         h21 = net.get("h21")
         h22 = net.get("h22")
@@ -267,8 +268,8 @@ def run(graph_topo):
         h35 = net.get("h35")
         h36 = net.get("h36")
 
-        with open("sp_result.txt", "w") as f:
-        #with open("ft_result.txt", "w") as f:
+        #with open("./artifacts/sp_result.txt", "w") as f:
+        with open("./artifacts/ft_result.txt", "w") as f:
             for prot in ["", "-u -b 15M"]: # TCP, UDP (with link rate)
                 if len(prot) > 0:
                     print("\nRunning iperf experiment for UDP connection")

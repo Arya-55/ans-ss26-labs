@@ -2,7 +2,6 @@ import re
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 TCP_MARKER = "===== TCP =====\n"
 UDP_MARKER = "===== UDP =====\n"
 MARKER_LEN = len(TCP_MARKER)
@@ -15,15 +14,12 @@ def _parse_tcp_result(tcp_str):
 
 def _parse_udp_result(udp_str):
     server_reports = "\n".join(re.findall(r"\[  1\] Server Report:\n.*\n.*\n.*\n", udp_str))
-    print(server_reports)    
 
     throughput_strs = re.findall(r" \d+\.\d+ Mbits/sec", server_reports)
     throughputs = [float(s.split(" ")[1]) for s in throughput_strs]
-    print("=>", throughputs)
 
     loss_strs = re.findall(r"\d+(?:\.\d+)?%", server_reports)
     losses = [float(s[:-1]) for s in loss_strs]
-    print("=>", losses)
 
     return throughputs, losses
 
@@ -35,8 +31,6 @@ def _get_results(filename):
         tmp = f.read()
         tcp_str = tmp[tmp.find(TCP_MARKER) + MARKER_LEN : tmp.find(UDP_MARKER)]
         results["tcp"] = _parse_tcp_result(tcp_str)
-
-        print(10 * "#", "\n")
         
         results["udp"] = {}
         udp_str = tmp[tmp.find(UDP_MARKER) + MARKER_LEN:]
@@ -44,13 +38,9 @@ def _get_results(filename):
 
     return results
 
-
-print("=== SP ROUTING ===")
-sp_results = _get_results("sp_result.txt")
-
-print("=== FT ROUTING ===")
-ft_results = _get_results("ft_result.txt")
-
+# Parse results
+sp_results = _get_results("./artifacts/sp_result.txt")
+ft_results = _get_results("./artifacts/ft_result.txt")
 
 # Plot TCP results
 bar_labels = ["Single\nh21 -> h35", "Simultaneous\nI) h21 -> h35", "Simultaneous\nII) h22 -> h36"]
@@ -72,7 +62,8 @@ plt.ylabel("Throughput [Mbps]")
 plt.title("Comparison of TCP-Connection Throughput (via iperf)")
 plt.legend()
 
-fig.savefig("tcp_comparison.png", dpi=300, bbox_inches="tight")
+fig.savefig("./artifacts/tcp_comparison.png", dpi=300, bbox_inches="tight")
+
 
 # Plot UDP results
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
@@ -106,4 +97,4 @@ ax2.set_title("Packet Loss")
 ax2.legend()
 
 fig.suptitle("Comparison of UDP-Connection  (via iperf)")
-fig.savefig("udp_comparison.png", dpi=300, bbox_inches="tight")
+fig.savefig("./artifacts/udp_comparison.png", dpi=300, bbox_inches="tight")
