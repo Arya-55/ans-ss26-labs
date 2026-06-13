@@ -255,6 +255,58 @@ def run(graph_topo):
 
     info('*** Starting network ***\n')
     net.start()
+    net.pingAll()
+
+    # Experiment for 4-port Switches
+    if graph_topo.k == 4:
+        # left most hosts
+        h21 = net.get("h21")
+        h22 = net.get("h22")
+
+        # right most hosts - in a different pod
+        h35 = net.get("h35")
+        h36 = net.get("h36")
+
+        with open("sp_result.txt", "w") as f:
+        #with open("ft_result.txt", "w") as f:
+            for prot in ["", "-u -b 15M"]: # TCP, UDP (with link rate)
+                if len(prot) > 0:
+                    print("\nRunning iperf experiment for UDP connection")
+                    f.write("===== UDP =====\n")
+                else:
+                    print("\nRunning iperf experiment for TCP connection")
+                    f.write("===== TCP =====\n")
+                
+                f.write("=== Exp 1 ===\n")                
+                # set up single communication h21 <-> h35 between hosts in different pods  
+                h21_listener = h21.popen(f'iperf -s {prot}')
+                h35_proc = h35.popen(f'iperf -c {h21.IP()} -t 20 {prot}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                
+                # get results and write them down
+                h35_out, h35_err = h35_proc.communicate()
+                print(h35_out, h35_err)
+                f.write(f"{h35_out}{h35_err}")
+
+                f.write("=== Exp 2 ===\n")
+                # set up simultaneous communication between all hosts of two edge switches in different pods (h21 <-> h35, h22 <-> h36) 
+                h21_listener = h21.popen(f'iperf -s {prot}')
+                h22_listener = h22.popen(f'iperf -s {prot}')
+                h35_proc = h35.popen(f'iperf -c {h21.IP()} -t 20 {prot}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                h36_proc = h36.popen(f'iperf -c {h22.IP()} -t 20 {prot}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                
+                # get outputs and write them down
+                h35_out, h35_err = h35_proc.communicate()
+                h36_out, h36_err = h36_proc.communicate()
+                print(h35_out, h35_err)
+                print(h36_out, h36_err)
+                f.write(f"{h35_out}{h35_err}")
+                f.write(f"{h36_out}{h36_err}")
+
+                # shut down server processes
+                h21_listener.terminate()
+                h22_listener.terminate()
+                print("Experiment finished")
+
     info('*** Running CLI ***\n')
     CLI(net)
     info('*** Stopping network ***\n')
