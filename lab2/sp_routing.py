@@ -148,18 +148,8 @@ class SPRouter(app_manager.RyuApp):
                                 match=match, instructions=inst)
         datapath.send_msg(mod)
 
-    @staticmethod
-    def packet_out_to_port(*, data, datapath, in_port, port):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        return parser.OFPPacketOut(datapath=datapath,
-                                   in_port=in_port,
-                                   buffer_id=ofproto.OFP_NO_BUFFER,
-                                   actions=[parser.OFPActionOutput(port)],
-                                   data=data)
-
     def flood_packet_out(self, datapath, **kwargs):
-        return self.packet_out_to_port(port=datapath.ofproto.OFPP_FLOOD, datapath=datapath, **kwargs)
+        return common.packet_out_to_port(port=datapath.ofproto.OFPP_FLOOD, datapath=datapath, **kwargs)
 
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -220,11 +210,11 @@ class SPRouter(app_manager.RyuApp):
                 # breakpoint()
                 if next_hop.dpid in current_node.ports:
                     out_port = current_node.ports[next_hop.dpid]
-                    outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
+                    outs.append(common.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
                     self.logger.info(f"dpid={current_node.dpid}: sending arp packet out on port={out_port}")
                 else:
                     for out_port in current_node.unexplored_ports:
-                        outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
+                        outs.append(common.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
                     self.logger.warning(f"next port unknown - send to unexplored_ports={current_node.unexplored_ports}")
             else:
                 self.logger.error(f"dpid={dpid}: next hop for dpid={target_node.dpid}, ip={target_node.ip_address} not found")
@@ -247,7 +237,7 @@ class SPRouter(app_manager.RyuApp):
             if next_hop:
                 if next_hop.dpid in current_node.ports:
                     out_port = current_node.ports[next_hop.dpid]
-                    outs.append(self.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
+                    outs.append(common.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
                     self.logger.info(f"dpid={current_node.dpid}: sending ethernet frame out on port={out_port}")
 
                     match = parser.OFPMatch(in_port=in_port, eth_dst=target_node.mac)
