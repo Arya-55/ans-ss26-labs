@@ -213,9 +213,10 @@ class SPRouter(app_manager.RyuApp):
                     outs.append(common.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
                     self.logger.info(f"dpid={current_node.dpid}: sending arp packet out on port={out_port}")
                 else:
-                    for out_port in current_node.unexplored_ports:
-                        outs.append(common.packet_out_to_port(data=msg.data, datapath=datapath, in_port=in_port, port=out_port))
-                    self.logger.warning(f"next port unknown - send to unexplored_ports={current_node.unexplored_ports}")
+                    unexplored_ports = current_node.unexplored_ports
+                    outs.append(common.packet_out_to_ports(data=msg.data, datapath=datapath, in_port=in_port,
+                                                            ports=unexplored_ports))
+                    self.logger.warning(f"next port unknown - send to unexplored_ports={unexplored_ports}")
             else:
                 self.logger.error(f"dpid={dpid}: next hop for dpid={target_node.dpid}, ip={target_node.ip_address} not found")
                 return

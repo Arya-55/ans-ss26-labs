@@ -87,4 +87,5 @@ def update_links(ryu_app, topo_net: topo.Fattree, paths: list, logger):
                 if node.type == "edge" or not any((node.dpid in path for path in paths)):
                     node.unexplored_ports.add(port.port_no)
                 else:
-                    logger.warning(f"non edge switch={(node.dpid, node.ip_address, node.name)} with paths has unexplored port={port}")
+                    pass
+                    #logger.warning(f"non edge switch={(node.dpid, node.ip_address, node.name)} with paths has unexplored port={port}")
