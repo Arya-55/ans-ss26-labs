@@ -21,6 +21,13 @@ For a single ongoing communication they behave rather similar in terms of throug
 But for simultaneous communication the throughput (both with TCP and UDP) of two-level routing stays the same, or even improves, while the throughput of shortest-path routing degrades significantly. The bandwidth clearly gets split among the two flows.  
 When looking at packet loss in the case of UDP, the bottleneck in shortest-path routing leads to roughly every second packet getting dropped, while two-level routing shows even less packet loss than in the single communication case.
 
+##### Submission
+<img src="./artifacts/tcp_comparison_submission.png" height="300"/>
+<img src="./artifacts/udp_comparison_submission.png" height="300"/>
+
+##### Newly Generated
+**Note:** You need to run `./analyse_experiment.py` and maybe reload this `.md`-file for these to show up
+
 <img src="./artifacts/tcp_comparison.png" height="300"/>
 <img src="./artifacts/udp_comparison.png" height="300"/>
 
